@@ -1,4 +1,8 @@
-# Welcome to your Lovable project
+# Swift Student Stride
+
+![Swift Student Stride Logo](/public/logo.png)
+
+A navigation app for college students that provides real-time location tracking, navigation to college, speed monitoring, ETA calculations, and proximity alerts.
 
 ## Project info
 

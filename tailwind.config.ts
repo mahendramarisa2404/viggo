@@ -32,6 +32,13 @@ export default {
 					DEFAULT: 'hsl(var(--secondary))',
 					foreground: 'hsl(var(--secondary-foreground))'
 				},
+                // Swift Student Stride custom colors
+                sss: {
+                    "blue": "#004AAD",
+                    "light-blue": "#1E96FC", 
+                    "purple": "#8C65AA",
+                    "light-purple": "#B191D2",
+                },
 				destructive: {
 					DEFAULT: 'hsl(var(--destructive))',
 					foreground: 'hsl(var(--destructive-foreground))'
