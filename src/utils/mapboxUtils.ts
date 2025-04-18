@@ -1,4 +1,3 @@
-
 import axios from 'axios';
 import { Location, RouteInfo, EtaInfo } from '@/types';
 
@@ -16,7 +15,8 @@ export const getDirections = async (
   destination: Location
 ): Promise<RouteInfo | null> => {
   try {
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
+    // Updated to use driving-traffic profile for real-time traffic conditions
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
     
     const response = await axios.get(url, {
       params: {
@@ -24,6 +24,8 @@ export const getDirections = async (
         geometries: 'geojson',
         overview: 'full',
         steps: true,
+        alternatives: true, // Get alternative routes if available
+        annotations: 'distance,duration,speed', // Get additional route details
       },
     });
 

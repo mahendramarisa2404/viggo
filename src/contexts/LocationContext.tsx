@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { Location, GpsAccuracy, SpeedData, CollegeInfo } from '@/types';
 import { calculateSpeed, getGpsAccuracyLevel, isWithinRadius } from '@/utils/locationUtils';
@@ -21,8 +22,8 @@ interface LocationContextType {
 const DEFAULT_COLLEGE_INFO: CollegeInfo = {
   name: 'Vignan Institute of Information Technology',
   location: {
-    latitude: 17.7215,  // Vignan Institute coordinates
-    longitude: 83.3216, // Visakhapatnam
+    latitude: 17.7097776,  // Updated Vignan Institute coordinates
+    longitude: 83.1669508, // Visakhapatnam
   },
   address: 'Beside Port Stadium, Dwarakanagar, Visakhapatnam, Andhra Pradesh 530016',
   notificationRadius: 500, // 500 meters
