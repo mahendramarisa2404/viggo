@@ -1,12 +1,11 @@
-
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { useLocation } from '@/contexts/LocationContext';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { createRouteGeoJson } from '@/utils/mapboxUtils';
+import { School, User } from 'lucide-react';
 
-// Set Mapbox token
 mapboxgl.accessToken = 'pk.eyJ1IjoibWFoaW5kcmF4OTQ0MSIsImEiOiJjbTlteGRuaHcwZzJ4MmpxdXZuaTB4dno5In0.3E8Cne4Zb52xaNyXJlSa4Q';
 
 const MapView: React.FC = () => {
@@ -19,21 +18,17 @@ const MapView: React.FC = () => {
   const { currentLocation, collegeInfo, isTracking } = useLocation();
   const { route, isNavigating } = useNavigation();
 
-  // Initialize map on component mount
   useEffect(() => {
     if (!mapContainer.current) return;
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v11',
-      center: [77.2090, 28.6139], // Default center (Delhi)
+      center: [77.2090, 28.6139],
       zoom: 12,
     });
 
-    // Add navigation controls
     map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
-
-    // Add geolocation control
     map.current.addControl(
       new mapboxgl.GeolocateControl({
         positionOptions: {
@@ -44,74 +39,66 @@ const MapView: React.FC = () => {
       'top-right'
     );
 
-    // Set map loaded state when map is ready
     map.current.on('load', () => {
       setMapLoaded(true);
 
-      // Add empty route source and layer
-      if (map.current) {
-        map.current.addSource('route', {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            properties: {},
-            geometry: {
-              type: 'LineString',
-              coordinates: [],
-            },
+      map.current?.addSource('route', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: [],
           },
-        });
+        },
+      });
 
-        map.current.addLayer({
-          id: 'route',
-          type: 'line',
-          source: 'route',
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': '#004AAD',
-            'line-width': 5,
-            'line-opacity': 0.8,
-          },
-        });
+      map.current?.addLayer({
+        id: 'route',
+        type: 'line',
+        source: 'route',
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#4A90E2',
+          'line-width': 5,
+          'line-opacity': 0.8,
+          'line-dasharray': [1, 1],
+        },
+      });
 
-        // Add college radius visualization
-        map.current.addSource('college-radius', {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            properties: {},
-            geometry: {
-              type: 'Point',
-              coordinates: [collegeInfo.location.longitude, collegeInfo.location.latitude],
-            },
+      map.current?.addSource('college-radius', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Point',
+            coordinates: [collegeInfo.location.longitude, collegeInfo.location.latitude],
           },
-        });
+        },
+      });
 
-        map.current.addLayer({
-          id: 'college-radius',
-          type: 'circle',
-          source: 'college-radius',
-          paint: {
-            'circle-radius': {
-              stops: [
-                [0, 0],
-                [20, collegeInfo.notificationRadius * 50], // Scale radius for zoom level
-              ],
-              base: 2,
-            },
-            'circle-color': '#B191D2',
-            'circle-opacity': 0.2,
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#8C65AA',
+      map.current?.addLayer({
+        id: 'college-radius',
+        type: 'circle',
+        source: 'college-radius',
+        paint: {
+          'circle-radius': {
+            stops: [[0, 0], [20, collegeInfo.notificationRadius * 50]],
+            base: 2,
           },
-        });
-      }
+          'circle-color': '#8C65AA',
+          'circle-opacity': 0.2,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#8C65AA',
+        },
+      });
     });
 
-    // Clean up on unmount
     return () => {
       if (map.current) {
         map.current.remove();
@@ -119,72 +106,34 @@ const MapView: React.FC = () => {
     };
   }, []);
 
-  // Add college marker
   useEffect(() => {
     if (!mapLoaded || !map.current) return;
 
-    // Add college marker
     if (!collegeMarker.current) {
-      const el = document.createElement('div');
-      el.className = 'college-marker';
-      el.style.width = '30px';
-      el.style.height = '30px';
-      el.style.borderRadius = '50%';
-      el.style.backgroundColor = '#8C65AA';
-      el.style.border = '3px solid white';
-      el.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.3)';
-
-      collegeMarker.current = new mapboxgl.Marker(el)
+      collegeMarker.current = new mapboxgl.Marker(createCustomMarker('school'))
         .setLngLat([collegeInfo.location.longitude, collegeInfo.location.latitude])
         .addTo(map.current);
 
-      // Add popup for college
       new mapboxgl.Popup({ offset: 25, closeButton: false })
         .setLngLat([collegeInfo.location.longitude, collegeInfo.location.latitude])
-        .setHTML(`<h3>${collegeInfo.name}</h3><p>${collegeInfo.address}</p>`)
+        .setHTML(`<h3 class="font-bold">Vignan College</h3><p>${collegeInfo.address}</p>`)
         .addTo(map.current);
-
-      // Update college radius source
-      const source = map.current.getSource('college-radius');
-      if (source && 'setData' in source) {
-        source.setData({
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'Point',
-            coordinates: [collegeInfo.location.longitude, collegeInfo.location.latitude],
-          },
-        });
-      }
     }
   }, [mapLoaded, collegeInfo]);
 
-  // Update user marker when location changes
   useEffect(() => {
     if (!mapLoaded || !map.current || !currentLocation) return;
 
     const lngLat: [number, number] = [currentLocation.longitude, currentLocation.latitude];
 
     if (!userMarker.current) {
-      // Create user marker if it doesn't exist
-      const el = document.createElement('div');
-      el.className = 'user-marker';
-      el.style.width = '20px';
-      el.style.height = '20px';
-      el.style.borderRadius = '50%';
-      el.style.backgroundColor = '#1E96FC';
-      el.style.border = '3px solid white';
-      el.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.3)';
-
-      userMarker.current = new mapboxgl.Marker(el)
+      userMarker.current = new mapboxgl.Marker(createCustomMarker('user'))
         .setLngLat(lngLat)
         .addTo(map.current);
     } else {
-      // Update existing marker position
       userMarker.current.setLngLat(lngLat);
     }
 
-    // Center map on user if tracking is active
     if (isTracking) {
       map.current.flyTo({
         center: lngLat,
@@ -194,7 +143,6 @@ const MapView: React.FC = () => {
     }
   }, [currentLocation, mapLoaded, isTracking]);
 
-  // Update route line when route changes
   useEffect(() => {
     if (!mapLoaded || !map.current || !route) return;
 
@@ -204,7 +152,6 @@ const MapView: React.FC = () => {
       source.setData(routeGeoJson);
     }
 
-    // Fit map to route bounds if navigating
     if (isNavigating && route.geometry.coordinates.length > 0) {
       const coordinates = route.geometry.coordinates;
       const bounds = coordinates.reduce(
@@ -219,6 +166,39 @@ const MapView: React.FC = () => {
       });
     }
   }, [route, mapLoaded, isNavigating]);
+
+  const createCustomMarker = (icon: 'school' | 'user') => {
+    const el = document.createElement('div');
+    el.className = `${icon}-marker`;
+    el.style.width = icon === 'school' ? '40px' : '30px';
+    el.style.height = icon === 'school' ? '40px' : '30px';
+    el.style.borderRadius = '50%';
+    el.style.backgroundColor = icon === 'school' ? '#8C65AA' : '#1E96FC';
+    el.style.border = '3px solid white';
+    el.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.3)';
+    el.style.display = 'flex';
+    el.style.alignItems = 'center';
+    el.style.justifyContent = 'center';
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '20');
+    svg.setAttribute('height', '20');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'white');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+
+    if (icon === 'school') {
+      svg.innerHTML = '<path d="m4 6 8-4 8 4"/><path d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"/><path d="M14 22v-4a2 2 0 0 0-4 0v4"/><path d="M18 5v17"/><path d="M6 5v17"/>';
+    } else {
+      svg.innerHTML = '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>';
+    }
+
+    el.appendChild(svg);
+    return el;
+  };
 
   return <div ref={mapContainer} className="w-full h-full rounded-lg" />;
 };
