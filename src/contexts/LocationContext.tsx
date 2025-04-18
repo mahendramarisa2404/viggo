@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { Location, GpsAccuracy, SpeedData, CollegeInfo } from '@/types';
 import { calculateSpeed, getGpsAccuracyLevel, isWithinRadius } from '@/utils/locationUtils';
@@ -20,12 +19,12 @@ interface LocationContextType {
 
 // Default college location (can be updated in settings)
 const DEFAULT_COLLEGE_INFO: CollegeInfo = {
-  name: 'My College',
+  name: 'Vignan Institute of Information Technology',
   location: {
-    latitude: 37.7749, // Default coordinates - should be updated
-    longitude: -122.4194, // Default coordinates - should be updated
+    latitude: 17.7215,  // Vignan Institute coordinates
+    longitude: 83.3216, // Visakhapatnam
   },
-  address: '123 College Street, City, State',
+  address: 'Beside Port Stadium, Dwarakanagar, Visakhapatnam, Andhra Pradesh 530016',
   notificationRadius: 500, // 500 meters
 };
 
