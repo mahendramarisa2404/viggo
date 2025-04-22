@@ -68,8 +68,8 @@ const MapPage: React.FC = () => {
           <MapView />
         </div>
 
-        {/* Floating info panels */}
-        <div className="absolute top-8 right-4 w-56 space-y-4">
+        {/* Floating info panels with responsive layout */}
+        <div className="absolute top-4 right-4 space-y-2 md:space-y-4 w-auto max-w-[250px]">
           <SpeedDisplay />
           <ETADisplay />
         </div>
