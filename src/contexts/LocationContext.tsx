@@ -25,7 +25,7 @@ const DEFAULT_COLLEGE_INFO: CollegeInfo = {
     latitude: 17.7097776,  // Updated Vignan Institute coordinates
     longitude: 83.1669508, // Visakhapatnam
   },
-  address: 'Beside Port Stadium, Dwarakanagar, Visakhapatnam, Andhra Pradesh 530016',
+  address: 'Vignan college Besides VSEZ Vadlapudi Duvvada, Gajuwaka, Visakhapatnam, Andhra Pradesh 530049',
   notificationRadius: 500, // 500 meters
 };
 
