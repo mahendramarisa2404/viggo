@@ -61,8 +61,8 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
       setRoute(routeInfo);
       setEta(calculateEta(routeInfo));
       
-      // Set up interval to periodically update route (every 30 seconds)
-      const interval = setInterval(updateRoute, 30000);
+      // Set up interval to periodically update route (every 5 seconds instead of 30)
+      const interval = setInterval(updateRoute, 5000);
       setRouteUpdateInterval(interval);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
