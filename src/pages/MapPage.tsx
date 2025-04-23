@@ -1,5 +1,4 @@
-
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import MapView from '@/components/MapView';
 import SpeedDisplay from '@/components/SpeedDisplay';
 import ETADisplay from '@/components/ETADisplay';
@@ -9,17 +8,15 @@ import LocationFallback from '@/components/LocationFallback';
 import { useLocation } from '@/contexts/LocationContext';
 import { initAlarmAudio } from '@/utils/notificationUtils';
 import { toast } from '@/components/ui/sonner';
+import StopAlarmButton from '@/components/StopAlarmButton';
 
 const MapPage: React.FC = () => {
   const { startLocationTracking, isTracking, currentLocation } = useLocation();
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  // Handle permissions for notifications and audio
   useEffect(() => {
-    // Initialize audio early to handle user gesture requirements
     initAlarmAudio();
     
-    // Request permission for notifications
     if ('Notification' in window) {
       Notification.requestPermission().then(permission => {
         if (permission === 'granted') {
@@ -34,9 +31,7 @@ const MapPage: React.FC = () => {
       });
     }
 
-    // Audio context setup (for mobile devices that require user gesture)
     const setupAudioContext = () => {
-      // Create and resume AudioContext to enable audio on mobile
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioContext) {
         const audioCtx = new AudioContext();
@@ -46,7 +41,6 @@ const MapPage: React.FC = () => {
       }
     };
 
-    // Add event listeners to handle user interaction for audio
     document.addEventListener('click', setupAudioContext, { once: true });
     document.addEventListener('touchstart', setupAudioContext, { once: true });
 
@@ -56,7 +50,6 @@ const MapPage: React.FC = () => {
     };
   }, []);
 
-  // Start location tracking when the component mounts
   useEffect(() => {
     if (!isTracking) {
       try {
@@ -79,7 +72,6 @@ const MapPage: React.FC = () => {
     }
   };
 
-  // Show fallback if location error or no location after 5 seconds
   if (locationError || (!currentLocation && isTracking)) {
     return (
       <div className="flex flex-col h-screen w-full bg-gray-50">
@@ -107,16 +99,16 @@ const MapPage: React.FC = () => {
           <MapView />
         </div>
 
-        {/* Floating info panels */}
         <div className="absolute top-8 right-4 w-56 space-y-4">
           <SpeedDisplay />
           <ETADisplay />
         </div>
 
-        {/* Accuracy bar at the bottom */}
         <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 w-11/12 max-w-md">
           <AccuracyIndicator />
         </div>
+
+        <StopAlarmButton />
       </div>
     </div>
   );

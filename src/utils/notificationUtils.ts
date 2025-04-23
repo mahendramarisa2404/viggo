@@ -1,4 +1,3 @@
-
 /**
  * Shows a browser notification if permission is granted
  * @param title Title of the notification
@@ -21,18 +20,31 @@ export const showNotification = (title: string, options?: NotificationOptions) =
   }
 };
 
-// Audio element for playing alarm sounds
+// Audio element and timers for alarm
 let alarmAudio: HTMLAudioElement | null = null;
-// Timer for stopping alarm after 60 seconds
 let alarmTimeout: ReturnType<typeof setTimeout> | null = null;
-// Track if vibration is ongoing (for manual stop)
 let isVibrating = false;
+// NEW: Track alarm active state for UI usage
+let isAlarmActive = false;
+// Allow subscribing to alarm state
+type AlarmListener = (active: boolean) => void;
+const alarmListeners: AlarmListener[] = [];
+export const addAlarmListener = (cb: AlarmListener) => { alarmListeners.push(cb); };
+export const removeAlarmListener = (cb: AlarmListener) => {
+  const i = alarmListeners.indexOf(cb);
+  if (i !== -1) alarmListeners.splice(i, 1);
+};
+const notifyAlarmListeners = () => {
+  alarmListeners.forEach(cb => cb(isAlarmActive));
+};
 
 /**
  * Initialize the alarm audio element
+ * Call this once on user gesture
  */
 export const initAlarmAudio = () => {
   if (!alarmAudio && typeof Audio !== 'undefined') {
+    // Use '/alarm.mp3' as default, developer can replace this file!
     alarmAudio = new Audio('/alarm.mp3');
     alarmAudio.loop = true;
   }
@@ -43,15 +55,18 @@ export const initAlarmAudio = () => {
  * @returns Promise that resolves when the audio starts playing
  */
 export const playAlarmSound = async () => {
-  // Clear any previous alarm timeout
+  // Don't start alarm if already running
+  if (isAlarmActive) return;
+  isAlarmActive = true;
+  notifyAlarmListeners();
+
+  // Clear any previous stop timeout
   if (alarmTimeout) {
     clearTimeout(alarmTimeout);
     alarmTimeout = null;
   }
 
-  if (!alarmAudio) {
-    initAlarmAudio();
-  }
+  if (!alarmAudio) initAlarmAudio();
 
   try {
     if (alarmAudio && alarmAudio.paused) {
@@ -62,10 +77,13 @@ export const playAlarmSound = async () => {
     console.error('Failed to play alarm sound:', error);
   }
 
-  // Vibrate the device if possible
+  // Vibrate device in a pleasant sequence
   if ('vibrate' in navigator) {
     try {
-      navigator.vibrate([200, 100, 200, 100, 200, 100, 200, 100, 200, 100]); // vibrate in pattern
+      // pleasant repeated pulses: 5 times for 60 seconds with spacing
+      navigator.vibrate([
+        400, 400, 400, 700, 400, 700, 400, 700, 400, 700
+      ]);
       isVibrating = true;
       console.log('Device vibration triggered');
     } catch (error) {
@@ -74,7 +92,7 @@ export const playAlarmSound = async () => {
     }
   }
 
-  // Set timer for 60 seconds to auto-stop alarm
+  // Stop alarm after 60 seconds automatically
   alarmTimeout = setTimeout(() => {
     stopAlarmSound();
   }, 60 * 1000); // 60 seconds
@@ -84,7 +102,12 @@ export const playAlarmSound = async () => {
  * Stop alarm sound and vibration
  */
 export const stopAlarmSound = () => {
-  if (alarmAudio && !alarmAudio.paused) {
+  if (!isAlarmActive) return;
+  isAlarmActive = false;
+  notifyAlarmListeners();
+
+  // Stop sound
+  if (alarmAudio) {
     alarmAudio.pause();
     alarmAudio.currentTime = 0;
     console.log('Alarm sound stopped');
@@ -93,42 +116,38 @@ export const stopAlarmSound = () => {
   // Stop vibration
   if ('vibrate' in navigator && isVibrating) {
     try {
-      navigator.vibrate(0); // Cancel ongoing vibration
+      navigator.vibrate(0);
       console.log('Vibration stopped');
-    } catch (error) {
-      // ignore
-    }
+    } catch {}
     isVibrating = false;
   }
 
-  // Clear any pending alarm auto-stop timeout
   if (alarmTimeout) {
     clearTimeout(alarmTimeout);
     alarmTimeout = null;
   }
 };
 
+export { isAlarmActive };
+
 /**
  * Shows a proximity notification when user is near the college
  * @param collegeName Name of the college
  */
 export const showProximityNotification = (collegeName: string) => {
-  // Play alarm sound (will also start auto-stop timer)
+  // Play alarm sound and vibration, lasting 60s max or until stop
   playAlarmSound();
 
-  // Create notification with compatible options
   showNotification(`Almost at ${collegeName}!`, {
     body: `You are within 500 meters of ${collegeName}`,
     icon: '/logo.png',
     requireInteraction: true,
   });
 
-  // Attempt to vibrate the device if the API is available
-  // This will run in addition to vibration triggered from playAlarmSound,
-  // but browsers will typically merge them.
+  // Extra vibration (some browsers merge with above)
   if ('vibrate' in navigator) {
     try {
-      navigator.vibrate([200, 100, 200]);
+      navigator.vibrate([400, 200, 400]);
       isVibrating = true;
       console.log('Device vibration triggered');
     } catch (error) {
