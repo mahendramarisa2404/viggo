@@ -1,4 +1,5 @@
-import React from 'react';
+
+import React, { useState, useEffect } from 'react';
 import MapView from '@/components/MapView';
 import SpeedDisplay from '@/components/SpeedDisplay';
 import ETADisplay from '@/components/ETADisplay';

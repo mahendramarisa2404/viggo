@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { stopAlarmSound, isAlarmActive, addAlarmListener, removeAlarmListener } from '@/utils/notificationUtils';
-import { Stop } from 'lucide-react';
+import { XCircle } from 'lucide-react';
 
 const StopAlarmButton: React.FC = () => {
   const [visible, setVisible] = useState(isAlarmActive);
@@ -26,7 +26,7 @@ const StopAlarmButton: React.FC = () => {
         className="bg-sss-purple text-white px-5 py-2 rounded-full shadow-lg flex items-center gap-2 hover:bg-sss-blue focus:outline-none focus:ring-2 focus:ring-sss-blue"
         aria-label="Stop alarm"
       >
-        <Stop className="w-5 h-5" />
+        <XCircle className="w-5 h-5" />
         Stop Alarm
       </button>
     </div>
