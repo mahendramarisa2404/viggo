@@ -72,12 +72,23 @@ export const showProximityNotification = (collegeName: string) => {
   // Play alarm sound when near college
   playAlarmSound();
   
+  // Create notification with compatible options
+  // Note: Removing the 'vibrate' property as it's not in the NotificationOptions type
   showNotification(`Almost at ${collegeName}!`, {
     body: `You are within 500 meters of ${collegeName}`,
     icon: '/logo.png',
-    // Attempt to make the notification vibrate the device
-    vibrate: [200, 100, 200],
     // Try to keep the notification persistent
     requireInteraction: true,
   });
+  
+  // Attempt to vibrate the device if the API is available
+  // This is separate from the notification options
+  if ('vibrate' in navigator) {
+    try {
+      navigator.vibrate([200, 100, 200]);
+      console.log('Device vibration triggered');
+    } catch (error) {
+      console.log('Vibration not supported on this device');
+    }
+  }
 };
