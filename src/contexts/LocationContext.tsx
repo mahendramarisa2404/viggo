@@ -11,6 +11,7 @@ interface LocationContextType {
   gpsAccuracy: GpsAccuracy;
   collegeInfo: CollegeInfo;
   isNearCollege: boolean;
+  hasShownProximityAlert: boolean;
   updateLocation: (location: Location) => void;
   updateCollegeInfo: (info: CollegeInfo) => void;
   startLocationTracking: () => void;
@@ -57,6 +58,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   });
   const [collegeInfo, setCollegeInfo] = useState<CollegeInfo>(DEFAULT_COLLEGE_INFO);
   const [isNearCollege, setIsNearCollege] = useState<boolean>(false);
+  const [hasShownProximityAlert, setHasShownProximityAlert] = useState<boolean>(false);
   const [isTracking, setIsTracking] = useState<boolean>(false);
   const [watchId, setWatchId] = useState<number | null>(null);
 
@@ -90,12 +92,18 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
         collegeInfo.location,
         collegeInfo.notificationRadius
       );
-      setIsNearCollege(nearCollege);
       
-      // Trigger notification if near college and wasn't before
+      // Only notify when entering the proximity zone (not already in it)
       if (nearCollege && !isNearCollege) {
-        // Show browser notification (would use Firebase Cloud Messaging in a complete implementation)
-        showProximityNotification(collegeInfo.name);
+        setIsNearCollege(true);
+        if (!hasShownProximityAlert) {
+          showProximityNotification(collegeInfo.name);
+          setHasShownProximityAlert(true);
+        }
+      } else if (!nearCollege && isNearCollege) {
+        // Reset notification state when leaving proximity zone
+        setIsNearCollege(false);
+        setHasShownProximityAlert(false);
       }
     }
   };
@@ -170,6 +178,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
         gpsAccuracy,
         collegeInfo,
         isNearCollege,
+        hasShownProximityAlert,
         updateLocation,
         updateCollegeInfo,
         startLocationTracking,

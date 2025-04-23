@@ -7,10 +7,54 @@ import AccuracyIndicator from '@/components/AccuracyIndicator';
 import NavigationBar from '@/components/NavigationBar';
 import LocationFallback from '@/components/LocationFallback';
 import { useLocation } from '@/contexts/LocationContext';
+import { initAlarmAudio } from '@/utils/notificationUtils';
+import { toast } from '@/components/ui/sonner';
 
 const MapPage: React.FC = () => {
   const { startLocationTracking, isTracking, currentLocation } = useLocation();
   const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Handle permissions for notifications and audio
+  useEffect(() => {
+    // Initialize audio early to handle user gesture requirements
+    initAlarmAudio();
+    
+    // Request permission for notifications
+    if ('Notification' in window) {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          toast.success('Notifications enabled', {
+            description: 'You will be notified when near the college'
+          });
+        } else {
+          toast.warning('Notifications disabled', {
+            description: 'Enable notifications to get alerts when near college'
+          });
+        }
+      });
+    }
+
+    // Audio context setup (for mobile devices that require user gesture)
+    const setupAudioContext = () => {
+      // Create and resume AudioContext to enable audio on mobile
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        const audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+      }
+    };
+
+    // Add event listeners to handle user interaction for audio
+    document.addEventListener('click', setupAudioContext, { once: true });
+    document.addEventListener('touchstart', setupAudioContext, { once: true });
+
+    return () => {
+      document.removeEventListener('click', setupAudioContext);
+      document.removeEventListener('touchstart', setupAudioContext);
+    };
+  }, []);
 
   // Start location tracking when the component mounts
   useEffect(() => {
@@ -22,11 +66,6 @@ const MapPage: React.FC = () => {
         setLocationError('Unable to access location services');
         console.error('Location error:', err);
       }
-    }
-
-    // Request permission for notifications
-    if ('Notification' in window) {
-      Notification.requestPermission();
     }
   }, []);
 
