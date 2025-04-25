@@ -1,7 +1,8 @@
+
 import axios from 'axios';
 import { Location, RouteInfo, EtaInfo } from '@/types';
 
-// Using the Mapbox token from the user's request
+// Using the same Mapbox token for consistency
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibWFoaW5kcmF4OTQ0MSIsImEiOiJjbTlteGRuaHcwZzJ4MmpxdXZuaTB4dno5In0.3E8Cne4Zb52xaNyXJlSa4Q';
 
 /**

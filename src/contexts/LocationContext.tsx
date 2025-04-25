@@ -18,7 +18,6 @@ interface LocationContextType {
   isTracking: boolean;
 }
 
-// Default college location (can be updated in settings)
 const DEFAULT_COLLEGE_INFO: CollegeInfo = {
   name: 'Vignan Institute of Information Technology',
   location: {
@@ -68,12 +67,10 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     
     setCurrentLocation(location);
     
-    // Update GPS accuracy
     if (location.accuracy !== undefined) {
       setGpsAccuracy(getGpsAccuracyLevel(location.accuracy));
     }
     
-    // Enhanced speed calculation with smoothing
     if (previousLocation && previousLocation.timestamp && location.timestamp) {
       const speed = calculateSpeed(previousLocation, location);
       const smoothedSpeed = speedData.speed * 0.3 + speed * 0.7; // Apply smoothing
@@ -85,7 +82,6 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
       });
     }
     
-    // Check if near college
     if (location && collegeInfo) {
       const nearCollege = isWithinRadius(
         location,
@@ -93,7 +89,6 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
         collegeInfo.notificationRadius
       );
       
-      // Only notify when entering the proximity zone (not already in it)
       if (nearCollege && !isNearCollege) {
         setIsNearCollege(true);
         if (!hasShownProximityAlert) {
@@ -101,7 +96,6 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
           setHasShownProximityAlert(true);
         }
       } else if (!nearCollege && isNearCollege) {
-        // Reset notification state when leaving proximity zone
         setIsNearCollege(false);
       }
     }
@@ -116,7 +110,6 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
             longitude: position.coords.longitude,
             accuracy: position.coords.accuracy,
             timestamp: position.timestamp,
-            speed: position.coords.speed || undefined,
           };
           updateLocation(newLocation);
         },
@@ -125,7 +118,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
         },
         {
           enableHighAccuracy: true,
-          maximumAge: 500, // Reduced for more frequent updates
+          maximumAge: 500,
           timeout: 5000,
         }
       );
@@ -146,7 +139,6 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   const updateCollegeInfo = (info: CollegeInfo) => {
     setCollegeInfo(info);
     
-    // Check if current location is near the new college location
     if (currentLocation) {
       const nearCollege = isWithinRadius(
         currentLocation,

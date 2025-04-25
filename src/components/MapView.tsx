@@ -6,7 +6,8 @@ import { useNavigation } from '@/contexts/NavigationContext';
 import { createRouteGeoJson } from '@/utils/mapboxUtils';
 import { School, User } from 'lucide-react';
 
-mapboxgl.accessToken = 'pk.eyJ1IjoibWFoaW5kcmF4OTQ0MSIsImEiOiJjbTlteGRuaHcwZzJ4MmpxdXZuaTB4dno5In0.3E8Cne4Zb52xaNyXJlSa4Q';
+const MAPBOX_TOKEN = 'pk.eyJ1IjoibWFoaW5kcmF4OTQ0MSIsImEiOiJjbTlteGRuaHcwZzJ4MmpxdXZuaTB4dno5In0.3E8Cne4Zb52xaNyXJlSa4Q';
+mapboxgl.accessToken = MAPBOX_TOKEN;
 
 const MapView: React.FC = () => {
   const mapContainer = useRef<HTMLDivElement>(null);

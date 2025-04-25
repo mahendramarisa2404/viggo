@@ -6,6 +6,10 @@ import { Button } from './ui/button';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { Location } from '@/types';
 import axios from 'axios';
+import mapboxgl from 'mapbox-gl';
+
+// Use the Mapbox token from mapboxUtils
+const MAPBOX_TOKEN = 'pk.eyJ1IjoibWFoaW5kcmF4OTQ0MSIsImEiOiJjbTlteGRuaHcwZzJ4MmpxdXZuaTB4dno5In0.3E8Cne4Zb52xaNyXJlSa4Q';
 
 const SearchDestination: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,7 +24,7 @@ const SearchDestination: React.FC = () => {
       const response = await axios.get(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
           searchQuery
-        )}.json?access_token=${mapboxgl.accessToken}`
+        )}.json?access_token=${MAPBOX_TOKEN}`
       );
 
       if (response.data.features && response.data.features.length > 0) {
