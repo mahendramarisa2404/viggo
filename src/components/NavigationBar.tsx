@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useLocation } from '@/contexts/LocationContext';
 import { useNavigation } from '@/contexts/NavigationContext';
@@ -37,8 +38,8 @@ const NavigationBar: React.FC = () => {
   return (
     <div className="bg-white shadow-md py-3 px-4 rounded-lg flex justify-between items-center">
       <div className="flex items-center">
-        <img src="/lovable-uploads/044edc96-22a8-40d3-aa29-9036a1de557b.png" alt="Vignan Navigator" className="h-10 w-10 mr-3" />
-        <h1 className="text-lg font-bold text-sss-blue">Vignan Navigator</h1>
+        <img src="/lovable-uploads/044edc96-22a8-40d3-aa29-9036a1de557b.png" alt="Viggo" className="h-10 w-10 mr-3" />
+        <h1 className="text-lg font-bold text-[#ea384c]">Viggo</h1>
       </div>
       
       <div className="flex space-x-4">

@@ -103,7 +103,6 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
       } else if (!nearCollege && isNearCollege) {
         // Reset notification state when leaving proximity zone
         setIsNearCollege(false);
-        setHasShownProximityAlert(false);
       }
     }
   };

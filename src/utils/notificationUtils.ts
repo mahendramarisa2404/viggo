@@ -1,3 +1,4 @@
+
 /**
  * Shows a browser notification if permission is granted
  * @param title Title of the notification
@@ -24,7 +25,7 @@ export const showNotification = (title: string, options?: NotificationOptions) =
 let alarmAudio: HTMLAudioElement | null = null;
 let alarmTimeout: ReturnType<typeof setTimeout> | null = null;
 let isVibrating = false;
-// NEW: Track alarm active state for UI usage
+// Track alarm active state for UI usage
 let isAlarmActive = false;
 // Allow subscribing to alarm state
 type AlarmListener = (active: boolean) => void;
@@ -143,16 +144,4 @@ export const showProximityNotification = (collegeName: string) => {
     icon: '/logo.png',
     requireInteraction: true,
   });
-
-  // Extra vibration (some browsers merge with above)
-  if ('vibrate' in navigator) {
-    try {
-      navigator.vibrate([400, 200, 400]);
-      isVibrating = true;
-      console.log('Device vibration triggered');
-    } catch (error) {
-      isVibrating = false;
-      console.log('Vibration not supported on this device');
-    }
-  }
 };

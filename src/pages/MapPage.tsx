@@ -45,6 +45,9 @@ const MapPage: React.FC = () => {
     document.addEventListener('click', setupAudioContext, { once: true });
     document.addEventListener('touchstart', setupAudioContext, { once: true });
 
+    // Set document title
+    document.title = "Viggo";
+
     return () => {
       document.removeEventListener('click', setupAudioContext);
       document.removeEventListener('touchstart', setupAudioContext);
