@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useContext, ReactNode } from
 import { Location, GpsAccuracy, SpeedData, CollegeInfo } from '@/types';
 import { calculateSpeed, getGpsAccuracyLevel, isWithinRadius } from '@/utils/locationUtils';
 import { showProximityNotification } from '@/utils/notificationUtils';
+import { toast } from '@/components/ui/sonner';
 
 interface LocationContextType {
   currentLocation: Location | null;
@@ -59,6 +60,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   const [hasShownProximityAlert, setHasShownProximityAlert] = useState<boolean>(false);
   const [isTracking, setIsTracking] = useState<boolean>(false);
   const [watchId, setWatchId] = useState<number | null>(null);
+  const [locationHistory, setLocationHistory] = useState<Location[]>([]);
 
   const updateLocation = (location: Location) => {
     if (currentLocation) {
@@ -67,16 +69,32 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     
     setCurrentLocation(location);
     
+    setLocationHistory(prev => {
+      const newHistory = [...prev, location];
+      if (newHistory.length > 5) {
+        return newHistory.slice(-5);
+      }
+      return newHistory;
+    });
+    
     if (location.accuracy !== undefined) {
       setGpsAccuracy(getGpsAccuracyLevel(location.accuracy));
     }
     
     if (previousLocation && previousLocation.timestamp && location.timestamp) {
-      const speed = calculateSpeed(previousLocation, location);
-      const smoothedSpeed = speedData.speed * 0.3 + speed * 0.7; // Apply smoothing
+      const rawSpeed = calculateSpeed(previousLocation, location);
+      
+      const accuracyFactor = location.accuracy ? Math.min(1, 5 / location.accuracy) : 0.5;
+      const smoothingWeight = 0.3 + (0.4 * accuracyFactor);
+      const smoothedSpeed = speedData.speed * (1 - smoothingWeight) + rawSpeed * smoothingWeight;
+      
+      const maxSpeedChange = 20;
+      const cappedSpeed = Math.abs(smoothedSpeed - speedData.speed) > maxSpeedChange ?
+        speedData.speed + (Math.sign(smoothedSpeed - speedData.speed) * maxSpeedChange) :
+        smoothedSpeed;
       
       setSpeedData({
-        speed: Number(smoothedSpeed.toFixed(1)),
+        speed: Number(cappedSpeed.toFixed(1)),
         timestamp: location.timestamp,
         source: 'GPS',
       });
@@ -103,28 +121,46 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
 
   const startLocationTracking = () => {
     if (!isTracking && navigator.geolocation) {
-      const id = navigator.geolocation.watchPosition(
-        (position) => {
-          const newLocation: Location = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            timestamp: position.timestamp,
-          };
-          updateLocation(newLocation);
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 500,
-          timeout: 5000,
+      try {
+        if ('Notification' in window && Notification.permission !== 'granted' && 
+            Notification.permission !== 'denied') {
+          Notification.requestPermission();
         }
-      );
-      
-      setWatchId(id);
-      setIsTracking(true);
+        
+        const id = navigator.geolocation.watchPosition(
+          (position) => {
+            const newLocation: Location = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              timestamp: position.timestamp,
+            };
+            updateLocation(newLocation);
+          },
+          (error) => {
+            console.error('Error getting location:', error);
+            toast.error("Location error", {
+              description: "Please check location permissions and try again"
+            });
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 250,
+            timeout: 3000,
+          }
+        );
+        
+        setWatchId(id);
+        setIsTracking(true);
+        toast.success("Location tracking started", {
+          description: "Your location is now being tracked for navigation"
+        });
+      } catch (error) {
+        console.error("Failed to start location tracking:", error);
+        toast.error("Location tracking failed", {
+          description: "Please enable location permissions in your browser settings"
+        });
+      }
     }
   };
 
@@ -133,6 +169,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
       navigator.geolocation.clearWatch(watchId);
       setWatchId(null);
       setIsTracking(false);
+      toast.info("Location tracking stopped");
     }
   };
 

@@ -11,11 +11,27 @@ export const showNotification = (title: string, options?: NotificationOptions) =
   }
 
   if (Notification.permission === 'granted') {
-    new Notification(title, options);
+    const notification = new Notification(title, options);
+    
+    // Handle notification click
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+    
+    return notification;
   } else if (Notification.permission !== 'denied') {
     Notification.requestPermission().then(permission => {
       if (permission === 'granted') {
-        new Notification(title, options);
+        const notification = new Notification(title, options);
+        
+        // Handle notification click
+        notification.onclick = () => {
+          window.focus();
+          notification.close();
+        };
+        
+        return notification;
       }
     });
   }
@@ -24,6 +40,7 @@ export const showNotification = (title: string, options?: NotificationOptions) =
 // Audio element and timers for alarm
 let alarmAudio: HTMLAudioElement | null = null;
 let alarmTimeout: ReturnType<typeof setTimeout> | null = null;
+let vibrationInterval: ReturnType<typeof setInterval> | null = null;
 let isVibrating = false;
 // Track alarm active state for UI usage
 let isAlarmActive = false;
@@ -48,6 +65,14 @@ export const initAlarmAudio = () => {
     // Use '/alarm.mp3' as default, developer can replace this file!
     alarmAudio = new Audio('/alarm.mp3');
     alarmAudio.loop = true;
+    
+    // Preload audio for faster playback
+    alarmAudio.preload = 'auto';
+    
+    // Add event listeners for better error handling
+    alarmAudio.addEventListener('error', (e) => {
+      console.error('Audio error:', e);
+    });
   }
 };
 
@@ -71,6 +96,22 @@ export const playAlarmSound = async () => {
 
   try {
     if (alarmAudio && alarmAudio.paused) {
+      // Try to unlock audio context on iOS/Safari
+      const unlockAudio = () => {
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContext) {
+          const audioCtx = new AudioContext();
+          if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+          }
+        }
+        document.removeEventListener('click', unlockAudio);
+        document.removeEventListener('touchstart', unlockAudio);
+      };
+      document.addEventListener('click', unlockAudio);
+      document.addEventListener('touchstart', unlockAudio);
+      
+      // Play audio
       await alarmAudio.play();
       console.log('Alarm sound playing');
     }
@@ -78,25 +119,36 @@ export const playAlarmSound = async () => {
     console.error('Failed to play alarm sound:', error);
   }
 
-  // Vibrate device in a pleasant sequence
+  // Start vibration in a more controlled way
   if ('vibrate' in navigator) {
     try {
-      // pleasant repeated pulses: 5 times for 60 seconds with spacing
-      navigator.vibrate([
-        400, 400, 400, 700, 400, 700, 400, 700, 400, 700
-      ]);
+      // Clear any existing vibration interval
+      if (vibrationInterval) {
+        clearInterval(vibrationInterval);
+      }
+      
+      // Initial vibration
+      navigator.vibrate(500);
       isVibrating = true;
       console.log('Device vibration triggered');
+      
+      // Set up interval for repeated vibration patterns
+      // This gives more control and ensures proper cleanup
+      vibrationInterval = setInterval(() => {
+        if (isVibrating && 'vibrate' in navigator) {
+          navigator.vibrate([400, 300]);
+        }
+      }, 2000);
     } catch (error) {
       isVibrating = false;
       console.log('Vibration not supported on this device');
     }
   }
 
-  // Stop alarm after 60 seconds automatically
+  // Stop alarm after 30 seconds automatically (reduced from 60s)
   alarmTimeout = setTimeout(() => {
     stopAlarmSound();
-  }, 60 * 1000); // 60 seconds
+  }, 30 * 1000); // 30 seconds
 };
 
 /**
@@ -112,6 +164,12 @@ export const stopAlarmSound = () => {
     alarmAudio.pause();
     alarmAudio.currentTime = 0;
     console.log('Alarm sound stopped');
+  }
+
+  // Clear vibration interval
+  if (vibrationInterval) {
+    clearInterval(vibrationInterval);
+    vibrationInterval = null;
   }
 
   // Stop vibration
@@ -136,12 +194,29 @@ export { isAlarmActive };
  * @param collegeName Name of the college
  */
 export const showProximityNotification = (collegeName: string) => {
-  // Play alarm sound and vibration, lasting 60s max or until stop
+  // Play alarm sound and vibration, lasting 30s max or until stop
   playAlarmSound();
 
-  showNotification(`Almost at ${collegeName}!`, {
+  const notification = showNotification(`Almost at ${collegeName}!`, {
     body: `You are within 500 meters of ${collegeName}`,
     icon: '/logo.png',
     requireInteraction: true,
+    vibrate: [200, 100, 200],
+    badge: '/logo.png',
   });
+  
+  // Auto-close notification when alarm stops
+  if (notification) {
+    const checkAlarmInterval = setInterval(() => {
+      if (!isAlarmActive) {
+        notification.close();
+        clearInterval(checkAlarmInterval);
+      }
+    }, 1000);
+    
+    // Clean up interval if notification is closed
+    notification.onclose = () => {
+      clearInterval(checkAlarmInterval);
+    };
+  }
 };
