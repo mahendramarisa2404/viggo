@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { Location, GpsAccuracy, SpeedData, CollegeInfo } from '@/types';
 import { calculateSpeed, getGpsAccuracyLevel, isWithinRadius } from '@/utils/locationUtils';
@@ -62,7 +61,6 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   const [isTracking, setIsTracking] = useState<boolean>(false);
   const [watchId, setWatchId] = useState<number | null>(null);
 
-  // Update location and related data
   const updateLocation = (location: Location) => {
     if (currentLocation) {
       setPreviousLocation(currentLocation);
@@ -75,11 +73,13 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
       setGpsAccuracy(getGpsAccuracyLevel(location.accuracy));
     }
     
-    // Update speed if previous location exists
+    // Enhanced speed calculation with smoothing
     if (previousLocation && previousLocation.timestamp && location.timestamp) {
       const speed = calculateSpeed(previousLocation, location);
+      const smoothedSpeed = speedData.speed * 0.3 + speed * 0.7; // Apply smoothing
+      
       setSpeedData({
-        speed,
+        speed: Number(smoothedSpeed.toFixed(1)),
         timestamp: location.timestamp,
         source: 'GPS',
       });
@@ -107,7 +107,6 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     }
   };
 
-  // Start tracking location
   const startLocationTracking = () => {
     if (!isTracking && navigator.geolocation) {
       const id = navigator.geolocation.watchPosition(
@@ -117,6 +116,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
             longitude: position.coords.longitude,
             accuracy: position.coords.accuracy,
             timestamp: position.timestamp,
+            speed: position.coords.speed || undefined,
           };
           updateLocation(newLocation);
         },
@@ -125,7 +125,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
         },
         {
           enableHighAccuracy: true,
-          maximumAge: 0,
+          maximumAge: 500, // Reduced for more frequent updates
           timeout: 5000,
         }
       );
@@ -135,7 +135,6 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     }
   };
 
-  // Stop tracking location
   const stopLocationTracking = () => {
     if (isTracking && watchId !== null && navigator.geolocation) {
       navigator.geolocation.clearWatch(watchId);
@@ -143,8 +142,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
       setIsTracking(false);
     }
   };
-  
-  // Update college information
+
   const updateCollegeInfo = (info: CollegeInfo) => {
     setCollegeInfo(info);
     
@@ -159,7 +157,6 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     }
   };
 
-  // Clean up on unmount
   useEffect(() => {
     return () => {
       if (watchId !== null && navigator.geolocation) {
