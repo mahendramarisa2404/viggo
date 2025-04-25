@@ -1,4 +1,3 @@
-
 /**
  * Shows a browser notification if permission is granted
  * @param title Title of the notification
@@ -201,7 +200,6 @@ export const showProximityNotification = (collegeName: string) => {
     body: `You are within 500 meters of ${collegeName}`,
     icon: '/logo.png',
     requireInteraction: true,
-    vibrate: [200, 100, 200],
     badge: '/logo.png',
   });
   
