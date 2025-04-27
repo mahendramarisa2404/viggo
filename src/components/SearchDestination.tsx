@@ -1,19 +1,20 @@
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { MapPin, Search, Loader2 } from 'lucide-react';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { Location } from '@/types';
 import axios from 'axios';
-import { toast } from './ui/sonner';
+import { toast } from 'sonner';
+import { useDebounce } from '@/hooks/useDebounce';
 
-// Use the Mapbox token from mapboxUtils
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibWFoaW5kcmF4OTQ0MSIsImEiOiJjbTlteGRuaHcwZzJ4MmpxdXZuaTB4dno5In0.3E8Cne4Zb52xaNyXJlSa4Q';
 
 interface SearchResult {
   placeName: string;
-  coordinates: [number, number]; // [longitude, latitude]
+  coordinates: [number, number];
+  distance?: number;
 }
 
 const SearchDestination: React.FC = () => {
@@ -21,10 +22,12 @@ const SearchDestination: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showResults, setShowResults] = useState(false);
-  const { startNavigation } = useNavigation();
+  const { startNavigation, isLoadingRoute } = useNavigation();
+  
+  const debouncedSearch = useDebounce(searchQuery, 500);
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+  const handleSearch = useCallback(async () => {
+    if (!debouncedSearch.trim()) return;
     
     setIsSearching(true);
     setSearchResults([]);
@@ -32,67 +35,62 @@ const SearchDestination: React.FC = () => {
     try {
       const response = await axios.get(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
-          searchQuery
-        )}.json?access_token=${MAPBOX_TOKEN}&limit=5&types=place,address,poi`
+          debouncedSearch
+        )}.json?access_token=${MAPBOX_TOKEN}&limit=5&country=in&types=place,address,poi&proximity=83.1669508,17.7097776`
       );
 
-      if (response.data.features && response.data.features.length > 0) {
+      if (response.data.features?.length > 0) {
         const results: SearchResult[] = response.data.features.map((feature: any) => ({
           placeName: feature.place_name,
-          coordinates: feature.center
+          coordinates: feature.center,
+          distance: feature.properties?.distance
         }));
         
         setSearchResults(results);
         setShowResults(true);
       } else {
-        toast.error("No locations found", {
+        toast.warning("No locations found", {
           description: "Try a different search term"
         });
       }
     } catch (error) {
       console.error('Search error:', error);
       toast.error("Search failed", {
-        description: "Please try again"
+        description: "Please check your internet connection and try again"
       });
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [debouncedSearch]);
 
-  const handleSelectLocation = (result: SearchResult) => {
-    const [lng, lat] = result.coordinates;
-    const destination: Location = {
-      latitude: lat,
-      longitude: lng,
-      timestamp: Date.now(),
-    };
-    
-    startNavigation(destination);
-    toast.success("Navigation started", {
-      description: `Navigating to ${result.placeName.split(',')[0]}`
-    });
-    
-    setSearchQuery('');
-    setShowResults(false);
-    setSearchResults([]);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
+  useEffect(() => {
+    if (debouncedSearch) {
       handleSearch();
     }
-    if (e.key === 'Escape') {
-      setShowResults(false);
-    }
-  };
+  }, [debouncedSearch, handleSearch]);
 
-  // Close search results when clicking outside
-  const handleBlur = (e: React.FocusEvent) => {
-    // Small delay to allow for clicking on results
-    setTimeout(() => {
+  const handleSelectLocation = async (result: SearchResult) => {
+    try {
+      const [lng, lat] = result.coordinates;
+      const destination: Location = {
+        latitude: lat,
+        longitude: lng,
+        timestamp: Date.now()
+      };
+      
+      await startNavigation(destination);
+      toast.success("Navigation started", {
+        description: `Navigating to ${result.placeName.split(',')[0]}`
+      });
+      
+      setSearchQuery('');
       setShowResults(false);
-    }, 200);
+      setSearchResults([]);
+    } catch (error) {
+      toast.error("Navigation failed", {
+        description: "Unable to start navigation. Please try again."
+      });
+    }
   };
 
   return (
@@ -104,27 +102,11 @@ const SearchDestination: React.FC = () => {
             placeholder="Search destination..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onBlur={handleBlur}
             onFocus={() => searchResults.length > 0 && setShowResults(true)}
             className="pl-10 pr-4"
           />
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
         </div>
-        <Button
-          onClick={handleSearch}
-          disabled={isSearching || !searchQuery.trim()}
-          className="bg-sss-blue hover:bg-sss-purple"
-        >
-          {isSearching ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <>
-              <MapPin className="w-4 h-4 mr-2" />
-              Search
-            </>
-          )}
-        </Button>
       </div>
       
       {showResults && searchResults.length > 0 && (
@@ -133,14 +115,28 @@ const SearchDestination: React.FC = () => {
             {searchResults.map((result, index) => (
               <li 
                 key={index}
-                className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-start"
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-start gap-3 transition-colors"
                 onClick={() => handleSelectLocation(result)}
               >
-                <MapPin className="w-4 h-4 text-sss-blue mt-1 mr-2 flex-shrink-0" />
-                <span className="text-sm">{result.placeName}</span>
+                <MapPin className="w-4 h-4 text-primary mt-1 flex-shrink-0" />
+                <div>
+                  <div className="text-sm font-medium">{result.placeName.split(',')[0]}</div>
+                  <div className="text-xs text-gray-500">{result.placeName.split(',').slice(1).join(',')}</div>
+                  {result.distance && (
+                    <div className="text-xs text-primary mt-1">
+                      {(result.distance / 1000).toFixed(1)} km away
+                    </div>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
+        </div>
+      )}
+      
+      {(isSearching || isLoadingRoute) && (
+        <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+          <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
         </div>
       )}
     </div>

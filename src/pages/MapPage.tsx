@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import MapView from '@/components/MapView';
 import SpeedDisplay from '@/components/SpeedDisplay';
@@ -10,6 +9,7 @@ import { useLocation } from '@/contexts/LocationContext';
 import { initAlarmAudio } from '@/utils/notificationUtils';
 import { toast } from '@/components/ui/sonner';
 import StopAlarmButton from '@/components/StopAlarmButton';
+import SpeedAlert from '@/components/SpeedAlert';
 
 const MapPage: React.FC = () => {
   const { startLocationTracking, isTracking, currentLocation } = useLocation();
@@ -113,6 +113,7 @@ const MapPage: React.FC = () => {
         </div>
 
         <StopAlarmButton />
+        <SpeedAlert />
       </div>
     </div>
   );

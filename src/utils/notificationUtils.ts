@@ -76,7 +76,7 @@ export const initAlarmAudio = () => {
 };
 
 /**
- * Play alarm sound (and optionally vibration)
+ * Play alarm sound with vibration for speed alerts
  * @returns Promise that resolves when the audio starts playing
  */
 export const playAlarmSound = async () => {
@@ -95,59 +95,31 @@ export const playAlarmSound = async () => {
 
   try {
     if (alarmAudio && alarmAudio.paused) {
-      // Try to unlock audio context on iOS/Safari
-      const unlockAudio = () => {
-        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        if (AudioContext) {
-          const audioCtx = new AudioContext();
-          if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
-          }
-        }
-        document.removeEventListener('click', unlockAudio);
-        document.removeEventListener('touchstart', unlockAudio);
-      };
-      document.addEventListener('click', unlockAudio);
-      document.addEventListener('touchstart', unlockAudio);
-      
-      // Play audio
       await alarmAudio.play();
-      console.log('Alarm sound playing');
+      console.log('Speed alert alarm playing');
     }
   } catch (error) {
     console.error('Failed to play alarm sound:', error);
   }
 
-  // Start vibration in a more controlled way
+  // Start vibration
   if ('vibrate' in navigator) {
     try {
-      // Clear any existing vibration interval
-      if (vibrationInterval) {
-        clearInterval(vibrationInterval);
-      }
-      
-      // Initial vibration
-      navigator.vibrate(500);
+      // Pattern: vibrate 500ms, pause 200ms, repeat
+      navigator.vibrate([500, 200, 500, 200]);
       isVibrating = true;
-      console.log('Device vibration triggered');
+      console.log('Speed alert vibration started');
       
-      // Set up interval for repeated vibration patterns
-      // This gives more control and ensures proper cleanup
       vibrationInterval = setInterval(() => {
         if (isVibrating && 'vibrate' in navigator) {
-          navigator.vibrate([400, 300]);
+          navigator.vibrate([500, 200]);
         }
-      }, 2000);
+      }, 1400);
     } catch (error) {
+      console.log('Vibration not supported');
       isVibrating = false;
-      console.log('Vibration not supported on this device');
     }
   }
-
-  // Stop alarm after 30 seconds automatically (reduced from 60s)
-  alarmTimeout = setTimeout(() => {
-    stopAlarmSound();
-  }, 30 * 1000); // 30 seconds
 };
 
 /**
