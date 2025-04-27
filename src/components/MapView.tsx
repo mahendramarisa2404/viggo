@@ -7,17 +7,9 @@ import { useNavigation } from '@/contexts/NavigationContext';
 import { createRouteGeoJson, verifyMapboxToken } from '@/utils/mapboxUtils';
 import { School, User } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
+import { useMapboxToken } from '@/contexts/MapboxTokenContext';
 
-// Import token from centralized location
-import { MAPBOX_TOKEN } from '@/utils/mapboxUtils';
-
-mapboxgl.accessToken = MAPBOX_TOKEN;
-
-interface MapViewProps {
-  className?: string;
-}
-
-const MapView: React.FC<MapViewProps> = ({ className = '' }) => {
+const MapView: React.FC<{ className?: string }> = ({ className = '' }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const userMarker = useRef<mapboxgl.Marker | null>(null);
@@ -27,13 +19,18 @@ const MapView: React.FC<MapViewProps> = ({ className = '' }) => {
   // Track the last update time to throttle updates on mobile
   const lastUpdate = useRef<number>(0);
 
+  const { token: mapboxToken, setIsValid } = useMapboxToken();
   const { currentLocation, collegeInfo, isTracking } = useLocation();
   const { route, isNavigating } = useNavigation();
   
+  // Set access token
+  mapboxgl.accessToken = mapboxToken;
+
   // Check if token is valid
   useEffect(() => {
     const checkToken = async () => {
       const isValid = await verifyMapboxToken();
+      setIsValid(isValid);
       if (!isValid) {
         setMapError("Invalid Mapbox token. Please check your token.");
         toast.error("Map loading failed", {
@@ -43,7 +40,7 @@ const MapView: React.FC<MapViewProps> = ({ className = '' }) => {
     };
     
     checkToken();
-  }, []);
+  }, [mapboxToken, setIsValid]);
 
   // Optimize map for mobile
   useEffect(() => {
@@ -156,11 +153,11 @@ const MapView: React.FC<MapViewProps> = ({ className = '' }) => {
         }
       });
 
-      // Handle style error events
-      map.current.on('styledata', (e) => {
-        const { status } = map.current?.getStyle() || {};
-        if (status === 'error') {
-          setMapError('Failed to load map style.');
+      // Handle style error events - FIX: removed problematic status check
+      map.current.on('styledata', () => {
+        // Check for style loading issues without accessing non-existent property
+        if (map.current && !map.current.isStyleLoaded()) {
+          console.warn('Map style not fully loaded yet');
         }
       });
       
@@ -177,7 +174,7 @@ const MapView: React.FC<MapViewProps> = ({ className = '' }) => {
         map.current.remove();
       }
     };
-  }, [mapError]);
+  }, [mapError, mapboxToken, collegeInfo.location.latitude, collegeInfo.location.longitude, collegeInfo.notificationRadius]);
 
   // Add college marker
   useEffect(() => {
