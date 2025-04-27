@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { useLocation } from '@/contexts/LocationContext';
@@ -15,27 +16,44 @@ const MapView: React.FC = () => {
   const userMarker = useRef<mapboxgl.Marker | null>(null);
   const collegeMarker = useRef<mapboxgl.Marker | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+  // Track the last update time to throttle updates on mobile
+  const lastUpdate = useRef<number>(0);
 
   const { currentLocation, collegeInfo, isTracking } = useLocation();
   const { route, isNavigating } = useNavigation();
 
+  // Optimize map for mobile
   useEffect(() => {
     if (!mapContainer.current) return;
+
+    // Check if we're on a mobile device
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v11',
-      center: [77.2090, 28.6139],
+      center: [83.1669508, 17.7097776], // Initial center at Vignan Institute
       zoom: 12,
+      attributionControl: false,
+      preserveDrawingBuffer: true, // Reduces flickering on some mobile devices
+      fadeDuration: isMobile ? 0 : 300, // Disable fade animations on mobile to reduce flickering
+      renderWorldCopies: false, // Disable world copies to improve performance
+      maxPitch: 60, // Limit pitch to improve performance
+      pitchWithRotate: !isMobile, // Disable pitch with rotate on mobile
     });
 
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    // Optimize for mobile
+    if (isMobile) {
+      map.current.dragRotate.disable(); // Disable drag rotation on mobile
+      map.current.touchZoomRotate.disableRotation(); // Disable rotation on mobile
+    }
+
+    // Add minimal controls
     map.current.addControl(
-      new mapboxgl.GeolocateControl({
-        positionOptions: {
-          enableHighAccuracy: true,
-        },
-        trackUserLocation: true,
+      new mapboxgl.NavigationControl({
+        showCompass: !isMobile,
+        showZoom: true,
+        visualizePitch: false
       }),
       'top-right'
     );
@@ -67,7 +85,6 @@ const MapView: React.FC = () => {
           'line-color': '#4A90E2',
           'line-width': 5,
           'line-opacity': 0.8,
-          'line-dasharray': [1, 1],
         },
       });
 
@@ -107,6 +124,7 @@ const MapView: React.FC = () => {
     };
   }, []);
 
+  // Add college marker
   useEffect(() => {
     if (!mapLoaded || !map.current) return;
 
@@ -115,15 +133,24 @@ const MapView: React.FC = () => {
         .setLngLat([collegeInfo.location.longitude, collegeInfo.location.latitude])
         .addTo(map.current);
 
-      new mapboxgl.Popup({ offset: 25, closeButton: false })
-        .setLngLat([collegeInfo.location.longitude, collegeInfo.location.latitude])
-        .setHTML(`<h3 class="font-bold">Vignan College</h3><p>${collegeInfo.address}</p>`)
-        .addTo(map.current);
+      // Use popup only on desktop to improve mobile performance
+      if (!/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+        new mapboxgl.Popup({ offset: 25, closeButton: false })
+          .setLngLat([collegeInfo.location.longitude, collegeInfo.location.latitude])
+          .setHTML(`<h3 class="font-bold">Vignan College</h3><p>${collegeInfo.address}</p>`)
+          .addTo(map.current);
+      }
     }
   }, [mapLoaded, collegeInfo]);
 
+  // Update user marker with throttling for better performance
   useEffect(() => {
     if (!mapLoaded || !map.current || !currentLocation) return;
+
+    const now = Date.now();
+    // Throttle updates on mobile to avoid flickering
+    if (now - lastUpdate.current < 150) return;
+    lastUpdate.current = now;
 
     const lngLat: [number, number] = [currentLocation.longitude, currentLocation.latitude];
 
@@ -136,14 +163,16 @@ const MapView: React.FC = () => {
     }
 
     if (isTracking) {
-      map.current.flyTo({
+      // Use easeTo instead of flyTo for smoother animation on mobile
+      map.current.easeTo({
         center: lngLat,
         essential: true,
-        speed: 0.5,
+        duration: 500,
       });
     }
   }, [currentLocation, mapLoaded, isTracking]);
 
+  // Update route with optimization
   useEffect(() => {
     if (!mapLoaded || !map.current || !route) return;
 
@@ -160,15 +189,16 @@ const MapView: React.FC = () => {
         new mapboxgl.LngLatBounds(coordinates[0] as [number, number], coordinates[0] as [number, number])
       );
 
+      // Use longer duration for smoother animation
       map.current.fitBounds(bounds, {
         padding: 100,
         maxZoom: 15,
-        duration: 1000,
+        duration: 1500,
       });
     }
   }, [route, mapLoaded, isNavigating]);
 
-  const createCustomMarker = (icon: 'school' | 'user') => {
+  const createCustomMarker = useCallback((icon: 'school' | 'user') => {
     const el = document.createElement('div');
     el.className = `${icon}-marker`;
     el.style.width = icon === 'school' ? '40px' : '30px';
@@ -180,6 +210,7 @@ const MapView: React.FC = () => {
     el.style.display = 'flex';
     el.style.alignItems = 'center';
     el.style.justifyContent = 'center';
+    el.style.willChange = 'transform'; // Performance optimization for animations
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', '20');
@@ -199,7 +230,7 @@ const MapView: React.FC = () => {
 
     el.appendChild(svg);
     return el;
-  };
+  }, []);
 
   return <div ref={mapContainer} className="w-full h-full rounded-lg" />;
 };

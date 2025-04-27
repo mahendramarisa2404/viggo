@@ -1,3 +1,4 @@
+
 /**
  * Shows a browser notification if permission is granted
  * @param title Title of the notification
@@ -61,17 +62,39 @@ const notifyAlarmListeners = () => {
  */
 export const initAlarmAudio = () => {
   if (!alarmAudio && typeof Audio !== 'undefined') {
-    // Use '/alarm.mp3' as default, developer can replace this file!
-    alarmAudio = new Audio('/alarm.mp3');
-    alarmAudio.loop = true;
-    
-    // Preload audio for faster playback
-    alarmAudio.preload = 'auto';
-    
-    // Add event listeners for better error handling
-    alarmAudio.addEventListener('error', (e) => {
-      console.error('Audio error:', e);
-    });
+    try {
+      // Use '/alarm.mp3' as default, developer can replace this file
+      alarmAudio = new Audio('/alarm.mp3');
+      alarmAudio.loop = true;
+      
+      // Preload audio for faster playback
+      alarmAudio.preload = 'auto';
+      alarmAudio.volume = 0.8; // Set volume to 80%
+      
+      // Add event listeners for better error handling
+      alarmAudio.addEventListener('error', (e) => {
+        console.error('Audio error:', e);
+      });
+      
+      // Ensure alarm can play
+      alarmAudio.load();
+      
+      // Try to play and immediately pause to unlock audio on iOS
+      const unlockAudio = async () => {
+        try {
+          await alarmAudio?.play();
+          alarmAudio?.pause();
+          alarmAudio!.currentTime = 0;
+        } catch (e) {
+          // Ignore errors - this is just an attempt to unlock audio
+          console.log('Initial audio play failed, may require user interaction');
+        }
+      };
+      
+      unlockAudio();
+    } catch (err) {
+      console.error('Failed to initialize alarm audio:', err);
+    }
   }
 };
 
@@ -95,16 +118,23 @@ export const playAlarmSound = async () => {
 
   try {
     if (alarmAudio && alarmAudio.paused) {
-      await alarmAudio.play();
-      console.log('Speed alert alarm playing');
+      // Give a slight delay before playing to avoid stuttering
+      setTimeout(async () => {
+        try {
+          await alarmAudio?.play();
+          console.log('Speed alert alarm playing');
+        } catch (e) {
+          console.error('Failed to play audio on delayed attempt:', e);
+        }
+      }, 100);
     }
   } catch (error) {
     console.error('Failed to play alarm sound:', error);
   }
 
-  // Start vibration
-  if ('vibrate' in navigator) {
-    try {
+  // Start vibration with graceful fallback
+  try {
+    if ('vibrate' in navigator) {
       // Pattern: vibrate 500ms, pause 200ms, repeat
       navigator.vibrate([500, 200, 500, 200]);
       isVibrating = true;
@@ -115,10 +145,12 @@ export const playAlarmSound = async () => {
           navigator.vibrate([500, 200]);
         }
       }, 1400);
-    } catch (error) {
-      console.log('Vibration not supported');
-      isVibrating = false;
+    } else {
+      console.log('Vibration not supported on this device');
     }
+  } catch (error) {
+    console.log('Error with vibration:', error);
+    isVibrating = false;
   }
 };
 
@@ -131,10 +163,14 @@ export const stopAlarmSound = () => {
   notifyAlarmListeners();
 
   // Stop sound
-  if (alarmAudio) {
-    alarmAudio.pause();
-    alarmAudio.currentTime = 0;
-    console.log('Alarm sound stopped');
+  try {
+    if (alarmAudio) {
+      alarmAudio.pause();
+      alarmAudio.currentTime = 0;
+      console.log('Alarm sound stopped');
+    }
+  } catch (error) {
+    console.error('Error stopping alarm sound:', error);
   }
 
   // Clear vibration interval
@@ -144,13 +180,15 @@ export const stopAlarmSound = () => {
   }
 
   // Stop vibration
-  if ('vibrate' in navigator && isVibrating) {
-    try {
+  try {
+    if ('vibrate' in navigator && isVibrating) {
       navigator.vibrate(0);
       console.log('Vibration stopped');
-    } catch {}
-    isVibrating = false;
+    }
+  } catch (error) {
+    console.log('Error stopping vibration:', error);
   }
+  isVibrating = false;
 
   if (alarmTimeout) {
     clearTimeout(alarmTimeout);
@@ -168,25 +206,29 @@ export const showProximityNotification = (collegeName: string) => {
   // Play alarm sound and vibration, lasting 30s max or until stop
   playAlarmSound();
 
-  const notification = showNotification(`Almost at ${collegeName}!`, {
-    body: `You are within 500 meters of ${collegeName}`,
-    icon: '/logo.png',
-    requireInteraction: true,
-    badge: '/logo.png',
-  });
-  
-  // Auto-close notification when alarm stops
-  if (notification) {
-    const checkAlarmInterval = setInterval(() => {
-      if (!isAlarmActive) {
-        notification.close();
-        clearInterval(checkAlarmInterval);
-      }
-    }, 1000);
+  try {
+    const notification = showNotification(`Almost at ${collegeName}!`, {
+      body: `You are within 500 meters of ${collegeName}`,
+      icon: '/logo.png',
+      requireInteraction: true,
+      badge: '/logo.png',
+    });
     
-    // Clean up interval if notification is closed
-    notification.onclose = () => {
-      clearInterval(checkAlarmInterval);
-    };
+    // Auto-close notification when alarm stops
+    if (notification) {
+      const checkAlarmInterval = setInterval(() => {
+        if (!isAlarmActive) {
+          notification.close();
+          clearInterval(checkAlarmInterval);
+        }
+      }, 1000);
+      
+      // Clean up interval if notification is closed
+      notification.onclose = () => {
+        clearInterval(checkAlarmInterval);
+      };
+    }
+  } catch (error) {
+    console.error('Error showing proximity notification:', error);
   }
 };

@@ -1,35 +1,49 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useLocation } from '@/contexts/LocationContext';
 import { GaugeIcon, WifiIcon, WifiOffIcon } from 'lucide-react';
 
 const SpeedDisplay: React.FC = () => {
   const { speedData, gpsAccuracy } = useLocation();
+  const [displaySpeed, setDisplaySpeed] = useState(0);
   const [speedAnimation, setSpeedAnimation] = useState<string>('');
 
+  // Smooth speed updates with exponential moving average
   useEffect(() => {
+    const smoothingFactor = 0.3; // Lower value = smoother transitions
+    setDisplaySpeed(prev => {
+      // If change is too drastic, use direct value to avoid lag in important updates
+      if (Math.abs(prev - speedData.speed) > 10) {
+        return speedData.speed;
+      }
+      return prev * (1 - smoothingFactor) + speedData.speed * smoothingFactor;
+    });
+
     setSpeedAnimation('animate-pulse');
     const timer = setTimeout(() => {
       setSpeedAnimation('');
-    }, 500);
+    }, 300);
     return () => clearTimeout(timer);
   }, [speedData.speed]);
 
-  const getSpeedColor = (speed: number) => {
+  // Round to 1 decimal place for display
+  const roundedSpeed = Math.round(displaySpeed * 10) / 10;
+
+  const getSpeedColor = useCallback((speed: number) => {
     if (speed >= 60) return 'text-red-600 animate-pulse';
     if (speed >= 45) return 'text-orange-500';
     if (speed >= 30) return 'text-yellow-500';
     return 'text-green-500';
-  };
+  }, []);
 
-  const getAccuracyDisplay = () => {
+  const getAccuracyDisplay = useCallback(() => {
     if (gpsAccuracy.level === 'unknown') return 'Acquiring GPS...';
     if (gpsAccuracy.level === 'low') return 'Low GPS Accuracy';
     if (gpsAccuracy.level === 'medium') return 'Good GPS Signal';
     return 'High GPS Accuracy';
-  };
+  }, [gpsAccuracy.level]);
 
-  const ConnectionIcon = () => {
+  const ConnectionIcon = useCallback(() => {
     if (gpsAccuracy.level === 'unknown') {
       return <WifiOffIcon className="w-5 h-5 text-gray-400" />;
     }
@@ -40,7 +54,7 @@ const SpeedDisplay: React.FC = () => {
       return <WifiIcon className="w-5 h-5 text-yellow-500" />;
     }
     return <WifiIcon className="w-5 h-5 text-green-500" />;
-  };
+  }, [gpsAccuracy.level]);
 
   return (
     <div className="bg-white p-4 rounded-lg shadow-md">
@@ -53,8 +67,8 @@ const SpeedDisplay: React.FC = () => {
       </div>
       
       <div className="flex items-center justify-center">
-        <div className={`text-4xl font-bold ${getSpeedColor(speedData.speed)} ${speedAnimation}`}>
-          {speedData.speed.toFixed(1)}
+        <div className={`text-4xl font-bold ${getSpeedColor(roundedSpeed)} ${speedAnimation}`}>
+          {roundedSpeed.toFixed(1)}
         </div>
         <div className="ml-2 text-lg text-gray-600">km/h</div>
       </div>
@@ -72,8 +86,8 @@ const SpeedDisplay: React.FC = () => {
       
       <div className="w-full h-1.5 bg-gray-100 rounded-full mt-3 overflow-hidden">
         <div 
-          className={`h-full transition-all duration-500 ${getSpeedColor(speedData.speed)}`}
-          style={{ width: `${Math.min((speedData.speed / 60) * 100, 100)}%` }}
+          className={`h-full transition-all duration-300 ${getSpeedColor(roundedSpeed)}`}
+          style={{ width: `${Math.min((roundedSpeed / 60) * 100, 100)}%` }}
         />
       </div>
     </div>

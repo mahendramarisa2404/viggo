@@ -1,9 +1,9 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { stopAlarmSound, isAlarmActive, addAlarmListener, removeAlarmListener } from '@/utils/notificationUtils';
-import { XCircle } from 'lucide-react';
+import { XCircle, BellOff } from 'lucide-react';
 import { Button } from './ui/button';
-import { toast } from './ui/sonner';
+import { toast } from 'sonner';
 
 const StopAlarmButton: React.FC = () => {
   const [visible, setVisible] = useState(isAlarmActive);
@@ -35,12 +35,14 @@ const StopAlarmButton: React.FC = () => {
     };
   }, []);
 
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     stopAlarmSound();
     toast.success("Alarm stopped", {
-      description: "Notifications and vibration have been disabled"
+      description: "Notifications and vibration have been disabled",
+      duration: 3000,
     });
-  };
+    setVisible(false); // Immediately hide button after stopping
+  }, []);
 
   if (!visible) return null;
 
@@ -54,7 +56,7 @@ const StopAlarmButton: React.FC = () => {
         size="lg"
         aria-label="Stop alarm"
       >
-        <XCircle className="w-5 h-5" />
+        <BellOff className="w-5 h-5" />
         STOP ALARM
       </Button>
     </div>

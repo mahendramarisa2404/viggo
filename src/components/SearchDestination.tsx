@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { MapPin, Search, Loader2 } from 'lucide-react';
+import { MapPin, Search, Loader2, Navigation } from 'lucide-react';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { useNavigation } from '@/contexts/NavigationContext';
@@ -22,7 +22,7 @@ const SearchDestination: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showResults, setShowResults] = useState(false);
-  const { startNavigation, isLoadingRoute } = useNavigation();
+  const { startNavigation, isNavigating, isLoadingRoute } = useNavigation();
   
   const debouncedSearch = useDebounce(searchQuery, 500);
 
@@ -66,6 +66,9 @@ const SearchDestination: React.FC = () => {
   useEffect(() => {
     if (debouncedSearch) {
       handleSearch();
+    } else {
+      setShowResults(false);
+      setSearchResults([]);
     }
   }, [debouncedSearch, handleSearch]);
 
@@ -93,8 +96,21 @@ const SearchDestination: React.FC = () => {
     }
   };
 
+  // Close search results when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.search-container')) {
+        setShowResults(false);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   return (
-    <div className="relative">
+    <div className="relative search-container">
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Input
@@ -107,6 +123,21 @@ const SearchDestination: React.FC = () => {
           />
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
         </div>
+        
+        <Button 
+          variant="outline" 
+          size="icon"
+          className={`${isNavigating ? 'bg-primary text-white' : ''}`}
+          onClick={() => {
+            if (searchResults.length > 0) {
+              handleSelectLocation(searchResults[0]);
+            }
+          }}
+          disabled={isLoadingRoute || searchResults.length === 0}
+          title="Start Navigation"
+        >
+          <Navigation className="w-4 h-4" />
+        </Button>
       </div>
       
       {showResults && searchResults.length > 0 && (
