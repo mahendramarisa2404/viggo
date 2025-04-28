@@ -2,9 +2,8 @@
 import axios from 'axios';
 import { Location, RouteInfo, EtaInfo } from '@/types';
 
-// Centralized Mapbox token - this should be a valid public token
-// Note: If token expires, replace with a new one from mapbox.com
-export const MAPBOX_TOKEN = 'pk.eyJ1IjoibG92YWJsZS1kZXYiLCJhIjoiY2xzOXJ0cWt2MGE5cDJrcGF0cDR2MXltbiJ9.7J83dSH6KZ_367YgfrmTJg';
+// Using the same Mapbox token for consistency
+const MAPBOX_TOKEN = 'pk.eyJ1IjoibWFoaW5kcmF4OTQ0MSIsImEiOiJjbTlteGRuaHcwZzJ4MmpxdXZuaTB4dno5In0.3E8Cne4Zb52xaNyXJlSa4Q';
 
 /**
  * Get directions from Mapbox API
@@ -103,20 +102,4 @@ export const createRouteGeoJson = (routeInfo: RouteInfo): GeoJSON.Feature => {
     properties: {},
     geometry: routeInfo.geometry as GeoJSON.Geometry,
   };
-};
-
-/**
- * Check if Mapbox token is valid
- * @returns Promise that resolves to true if token is valid
- */
-export const verifyMapboxToken = async (): Promise<boolean> => {
-  try {
-    const response = await axios.get(
-      `https://api.mapbox.com/tokens/v2?access_token=${MAPBOX_TOKEN}`
-    );
-    return response.status === 200;
-  } catch (error) {
-    console.error('Mapbox token validation error:', error);
-    return false;
-  }
 };

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import MapView from '@/components/MapView';
 import SpeedDisplay from '@/components/SpeedDisplay';
@@ -11,34 +10,10 @@ import { initAlarmAudio } from '@/utils/notificationUtils';
 import { toast } from '@/components/ui/sonner';
 import StopAlarmButton from '@/components/StopAlarmButton';
 import SpeedAlert from '@/components/SpeedAlert';
-import { verifyMapboxToken } from '@/utils/mapboxUtils';
 
 const MapPage: React.FC = () => {
   const { startLocationTracking, isTracking, currentLocation } = useLocation();
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [mapStatus, setMapStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-
-  // Verify Mapbox token on page load
-  useEffect(() => {
-    const checkMapbox = async () => {
-      try {
-        const isValid = await verifyMapboxToken();
-        if (!isValid) {
-          toast.error("Map configuration error", {
-            description: "Map may not display correctly due to token issues."
-          });
-          setMapStatus('error');
-        } else {
-          setMapStatus('ready');
-        }
-      } catch (error) {
-        console.error("Mapbox verification error:", error);
-        setMapStatus('error');
-      }
-    };
-    
-    checkMapbox();
-  }, []);
 
   useEffect(() => {
     initAlarmAudio();
@@ -124,16 +99,16 @@ const MapPage: React.FC = () => {
       </div>
 
       <div className="flex-1 relative p-4 pt-0">
-        <div className="h-full rounded-lg overflow-hidden shadow-lg" style={{ minHeight: '300px' }}>
-          <MapView className="h-full" />
+        <div className="h-full rounded-lg overflow-hidden shadow-lg">
+          <MapView />
         </div>
 
-        <div className="absolute top-8 right-4 w-56 space-y-4 z-10">
+        <div className="absolute top-8 right-4 w-56 space-y-4">
           <SpeedDisplay />
           <ETADisplay />
         </div>
 
-        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 w-11/12 max-w-md z-10">
+        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 w-11/12 max-w-md">
           <AccuracyIndicator />
         </div>
 
