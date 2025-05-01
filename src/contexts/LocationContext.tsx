@@ -1,7 +1,9 @@
+
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { Location, GpsAccuracy, SpeedData, CollegeInfo } from '@/types';
-import { calculateSpeed, getGpsAccuracyLevel, isWithinRadius } from '@/utils/locationUtils';
+import { getGpsAccuracyLevel, isWithinRadius } from '@/utils/locationUtils';
 import { showProximityNotification, isAlarmManuallyDisabled } from '@/utils/notificationUtils';
+import { speedCalculator } from '@/utils/speedCalculator';
 import { toast } from '@/components/ui/sonner';
 
 interface LocationContextType {
@@ -49,7 +51,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   const [speedData, setSpeedData] = useState<SpeedData>({
     speed: 0,
     timestamp: Date.now(),
-    source: 'GPS',
+    source: 'Advanced',
   });
   const [gpsAccuracy, setGpsAccuracy] = useState<GpsAccuracy>({
     level: 'unknown',
@@ -60,54 +62,37 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   const [hasShownProximityAlert, setHasShownProximityAlert] = useState<boolean>(false);
   const [isTracking, setIsTracking] = useState<boolean>(false);
   const [watchId, setWatchId] = useState<number | null>(null);
-  const [locationHistory, setLocationHistory] = useState<Location[]>([]);
   const lastProximityCheckRef = React.useRef<number>(0);
 
   const updateLocation = (location: Location) => {
+    // Only process valid locations
+    if (!location || location.latitude === undefined || location.longitude === undefined) {
+      return;
+    }
+    
+    // Store previous location
     if (currentLocation) {
       setPreviousLocation(currentLocation);
     }
     
     setCurrentLocation(location);
     
-    // Keep a rolling history of the last 5 locations for improved speed calculations
-    setLocationHistory(prev => {
-      const newHistory = [...prev, location];
-      if (newHistory.length > 5) {
-        return newHistory.slice(-5);
-      }
-      return newHistory;
-    });
-    
     // Update GPS accuracy
     if (location.accuracy !== undefined) {
       setGpsAccuracy(getGpsAccuracyLevel(location.accuracy));
     }
     
-    // Calculate speed with improved accuracy and smoothing
-    if (previousLocation && previousLocation.timestamp && location.timestamp) {
-      const rawSpeed = calculateSpeed(previousLocation, location);
-      
-      // Enhanced adaptive smoothing based on GPS accuracy
-      const accuracyFactor = location.accuracy ? Math.min(1, 5 / location.accuracy) : 0.5;
-      const smoothingWeight = 0.3 + (0.4 * accuracyFactor);
-      const smoothedSpeed = speedData.speed * (1 - smoothingWeight) + rawSpeed * smoothingWeight;
-      
-      // Cap maximum speed changes to prevent jumps
-      const maxSpeedChange = 20;
-      const cappedSpeed = Math.abs(smoothedSpeed - speedData.speed) > maxSpeedChange ?
-        speedData.speed + (Math.sign(smoothedSpeed - speedData.speed) * maxSpeedChange) :
-        smoothedSpeed;
-      
-      setSpeedData({
-        speed: Number(cappedSpeed.toFixed(1)),
-        timestamp: location.timestamp,
-        source: 'GPS',
-      });
-    }
+    // Calculate speed using the advanced calculator
+    const calculatedSpeed = speedCalculator.addLocation(location);
+    
+    // Update speed data
+    setSpeedData({
+      speed: calculatedSpeed,
+      timestamp: location.timestamp,
+      source: 'Advanced',
+    });
     
     // Check if near college with throttling to avoid duplicate notifications
-    // and respecting the manual disable state
     if (location && collegeInfo) {
       const now = Date.now();
       // Only check proximity every 2 seconds to reduce processing
@@ -145,6 +130,9 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
           Notification.requestPermission();
         }
         
+        // Reset speed calculator when starting tracking
+        speedCalculator.reset();
+        
         const id = navigator.geolocation.watchPosition(
           (position) => {
             const newLocation: Location = {
@@ -152,6 +140,8 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
               longitude: position.coords.longitude,
               accuracy: position.coords.accuracy,
               timestamp: position.timestamp,
+              // Include native speed if available from the GPS
+              speed: position.coords.speed !== null ? position.coords.speed * 3.6 : undefined, // Convert m/s to km/h
             };
             updateLocation(newLocation);
           },
@@ -163,7 +153,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
           },
           {
             enableHighAccuracy: true,
-            maximumAge: 250,
+            maximumAge: 100, // Reduced for more frequent updates
             timeout: 3000,
           }
         );

@@ -4,6 +4,7 @@ import { MapPin, Search, Loader2, Navigation } from 'lucide-react';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { useNavigation } from '@/contexts/NavigationContext';
+import { useLocation } from '@/contexts/LocationContext';
 import { Location } from '@/types';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -15,6 +16,7 @@ interface SearchResult {
   placeName: string;
   coordinates: [number, number];
   distance?: number;
+  placeType?: string;
 }
 
 const SearchDestination: React.FC = () => {
@@ -23,8 +25,9 @@ const SearchDestination: React.FC = () => {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showResults, setShowResults] = useState(false);
   const { startNavigation, isNavigating, isLoadingRoute } = useNavigation();
+  const { currentLocation } = useLocation();
   
-  const debouncedSearch = useDebounce(searchQuery, 500);
+  const debouncedSearch = useDebounce(searchQuery, 300); // Reduced from 500ms to 300ms for faster response
 
   const handleSearch = useCallback(async () => {
     if (!debouncedSearch.trim()) return;
@@ -33,20 +36,47 @@ const SearchDestination: React.FC = () => {
     setSearchResults([]);
     
     try {
+      // Use current location for proximity if available, otherwise fall back to default
+      const proximityLng = currentLocation?.longitude || 83.1669508;
+      const proximityLat = currentLocation?.latitude || 17.7097776;
+      
+      // Calculate bounding box around current location (roughly 10km in each direction)
+      const bbox = currentLocation ? 
+        `${proximityLng - 0.1},${proximityLat - 0.1},${proximityLng + 0.1},${proximityLat + 0.1}` : 
+        undefined;
+      
       const response = await axios.get(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
           debouncedSearch
-        )}.json?access_token=${MAPBOX_TOKEN}&limit=5&country=in&types=place,address,poi&proximity=83.1669508,17.7097776`
+        )}.json`, {
+          params: {
+            access_token: MAPBOX_TOKEN,
+            limit: 10, // Increased from 5 to 10 for more options
+            country: 'in',
+            types: 'place,address,poi,district,locality,neighborhood',
+            proximity: `${proximityLng},${proximityLat}`,
+            bbox: bbox,
+            fuzzyMatch: true,
+            autocomplete: true
+          }
+        }
       );
 
       if (response.data.features?.length > 0) {
+        // Enhanced result processing with more metadata
         const results: SearchResult[] = response.data.features.map((feature: any) => ({
           placeName: feature.place_name,
           coordinates: feature.center,
-          distance: feature.properties?.distance
+          distance: feature.properties?.distance,
+          placeType: feature.place_type?.[0] || 'location'
         }));
         
-        setSearchResults(results);
+        // Sort results by confidence and relevance
+        const enhancedResults = results
+          .filter((result) => result.placeName.trim() !== '')
+          .sort((a, b) => (a.distance || 9999) - (b.distance || 9999));
+        
+        setSearchResults(enhancedResults);
         setShowResults(true);
       } else {
         toast.warning("No locations found", {
@@ -61,7 +91,7 @@ const SearchDestination: React.FC = () => {
     } finally {
       setIsSearching(false);
     }
-  }, [debouncedSearch]);
+  }, [debouncedSearch, currentLocation]);
 
   useEffect(() => {
     if (debouncedSearch) {
@@ -153,11 +183,18 @@ const SearchDestination: React.FC = () => {
                 <div>
                   <div className="text-sm font-medium">{result.placeName.split(',')[0]}</div>
                   <div className="text-xs text-gray-500">{result.placeName.split(',').slice(1).join(',')}</div>
-                  {result.distance && (
-                    <div className="text-xs text-primary mt-1">
-                      {(result.distance / 1000).toFixed(1)} km away
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 mt-1">
+                    {result.placeType && (
+                      <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                        {result.placeType}
+                      </span>
+                    )}
+                    {result.distance && (
+                      <span className="text-xs text-primary">
+                        {(result.distance / 1000).toFixed(1)} km away
+                      </span>
+                    )}
+                  </div>
                 </div>
               </li>
             ))}

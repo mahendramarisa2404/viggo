@@ -5,8 +5,27 @@ import { Location, RouteInfo, EtaInfo } from '@/types';
 // Using the same Mapbox token for consistency
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibWFoaW5kcmF4OTQ0MSIsImEiOiJjbTlteGRuaHcwZzJ4MmpxdXZuaTB4dno5In0.3E8Cne4Zb52xaNyXJlSa4Q';
 
+// Cache for routes to reduce API calls
+const routeCache = new Map<string, {
+  routeInfo: RouteInfo;
+  timestamp: number;
+}>();
+
+// Cache TTL in milliseconds (30 seconds)
+const CACHE_TTL = 30000;
+
 /**
- * Get directions from Mapbox API
+ * Generate a cache key for a route
+ * @param origin Starting location
+ * @param destination Ending location
+ * @returns Cache key string
+ */
+const generateCacheKey = (origin: Location, destination: Location): string => {
+  return `${origin.latitude.toFixed(5)},${origin.longitude.toFixed(5)}_${destination.latitude.toFixed(5)},${destination.longitude.toFixed(5)}`;
+};
+
+/**
+ * Get directions from Mapbox API with caching and fallbacks
  * @param origin Starting location
  * @param destination Ending location
  * @returns Promise with route information
@@ -16,8 +35,61 @@ export const getDirections = async (
   destination: Location
 ): Promise<RouteInfo | null> => {
   try {
-    // Updated to use driving-traffic profile for real-time traffic conditions
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
+    // Check cache first
+    const cacheKey = generateCacheKey(origin, destination);
+    const cachedRoute = routeCache.get(cacheKey);
+    
+    if (cachedRoute && Date.now() - cachedRoute.timestamp < CACHE_TTL) {
+      return cachedRoute.routeInfo;
+    }
+    
+    // Try with traffic profile first
+    const trafficRoute = await fetchDirections(origin, destination, 'driving-traffic');
+    
+    if (trafficRoute) {
+      // Cache the result
+      routeCache.set(cacheKey, {
+        routeInfo: trafficRoute,
+        timestamp: Date.now()
+      });
+      
+      return trafficRoute;
+    }
+    
+    // Fall back to regular driving profile if traffic profile fails
+    const regularRoute = await fetchDirections(origin, destination, 'driving');
+    
+    if (regularRoute) {
+      // Cache the result
+      routeCache.set(cacheKey, {
+        routeInfo: regularRoute,
+        timestamp: Date.now()
+      });
+      
+      return regularRoute;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error fetching directions from Mapbox:', error);
+    return null;
+  }
+};
+
+/**
+ * Internal function to fetch directions from Mapbox API
+ * @param origin Starting location
+ * @param destination Ending location
+ * @param profile Routing profile to use
+ * @returns Promise with route information
+ */
+const fetchDirections = async (
+  origin: Location,
+  destination: Location,
+  profile: 'driving' | 'driving-traffic' | 'walking' | 'cycling'
+): Promise<RouteInfo | null> => {
+  try {
+    const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
     
     const response = await axios.get(url, {
       params: {
@@ -26,12 +98,20 @@ export const getDirections = async (
         overview: 'full',
         steps: true,
         alternatives: true, // Get alternative routes if available
-        annotations: 'distance,duration,speed', // Get additional route details
+        annotations: 'distance,duration,speed,congestion', // Get additional route details
+        language: 'en',
       },
+      timeout: 5000, // 5 second timeout to prevent UI freezing
     });
 
     if (response.data.routes && response.data.routes.length > 0) {
-      const route = response.data.routes[0];
+      // Pick the fastest route
+      const routes = response.data.routes;
+      
+      // Sort by duration
+      routes.sort((a: any, b: any) => a.duration - b.duration);
+      
+      const route = routes[0];
       return {
         distance: route.distance,
         duration: route.duration,
@@ -41,7 +121,7 @@ export const getDirections = async (
     
     return null;
   } catch (error) {
-    console.error('Error fetching directions from Mapbox:', error);
+    console.error(`Error fetching ${profile} directions:`, error);
     return null;
   }
 };
@@ -73,8 +153,10 @@ export const formatRemainingTime = (seconds: number): string => {
   
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
-  } else {
+  } else if (minutes > 0) {
     return `${minutes}m`;
+  } else {
+    return `<1m`;
   }
 };
 

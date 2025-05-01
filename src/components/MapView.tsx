@@ -20,6 +20,16 @@ const MapView: React.FC = () => {
   const [mapError, setMapError] = useState<string | null>(null);
   // Track the last update time to throttle updates on mobile
   const lastUpdate = useRef<number>(0);
+  // Track the last position for user location
+  const lastPosition = useRef<[number, number] | null>(null);
+  // Track if we should recenter the map
+  const shouldRecenter = useRef<boolean>(true);
+  // Track the current zoom level to prevent zoom thrashing
+  const currentZoom = useRef<number>(14);
+  // Track when the user last interacted with the map
+  const lastUserInteraction = useRef<number>(0);
+  // Debounce timer for map movements
+  const mapMoveTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const { currentLocation, collegeInfo, isTracking } = useLocation();
   const { route, isNavigating } = useNavigation();
@@ -36,14 +46,18 @@ const MapView: React.FC = () => {
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/streets-v11',
         center: [83.1669508, 17.7097776], // Initial center at Vignan Institute
-        zoom: 12,
+        zoom: 14, // Start with a more zoomed-in view
         attributionControl: false,
         preserveDrawingBuffer: true, // Reduces flickering on some mobile devices
-        fadeDuration: isMobile ? 0 : 300, // Disable fade animations on mobile to reduce flickering
+        fadeDuration: 0, // Disable fade animations to reduce flickering
         renderWorldCopies: false, // Disable world copies to improve performance
         maxPitch: 60, // Limit pitch to improve performance
         pitchWithRotate: !isMobile, // Disable pitch with rotate on mobile
+        minZoom: 10, // Prevent zooming out too far
+        maxZoom: 20, // Prevent zooming in too far
       });
+
+      currentZoom.current = 14;
 
       // Optimize for mobile
       if (isMobile) {
@@ -60,6 +74,29 @@ const MapView: React.FC = () => {
         }),
         'top-right'
       );
+
+      // Track user interactions with the map
+      map.current.on('dragstart', () => {
+        shouldRecenter.current = false; // User is controlling the map
+        lastUserInteraction.current = Date.now();
+      });
+
+      map.current.on('zoomstart', () => {
+        lastUserInteraction.current = Date.now();
+      });
+
+      map.current.on('zoomend', () => {
+        if (map.current) {
+          currentZoom.current = map.current.getZoom();
+        }
+      });
+
+      // Auto-recenter after 10 seconds of no interaction
+      const autoRecenterInterval = setInterval(() => {
+        if (!shouldRecenter.current && Date.now() - lastUserInteraction.current > 10000) {
+          shouldRecenter.current = true;
+        }
+      }, 10000);
 
       // Add error handling
       map.current.on('error', (e) => {
@@ -129,16 +166,16 @@ const MapView: React.FC = () => {
         });
       });
 
+      return () => {
+        clearInterval(autoRecenterInterval);
+        if (map.current) {
+          map.current.remove();
+        }
+      };
     } catch (err) {
       console.error('Error initializing map:', err);
       setMapError('Could not initialize map');
     }
-
-    return () => {
-      if (map.current) {
-        map.current.remove();
-      }
-    };
   }, []);
 
   // Add college marker
@@ -160,19 +197,66 @@ const MapView: React.FC = () => {
     }
   }, [mapLoaded, collegeInfo]);
 
-  // Update user marker with improved throttling for better performance
+  // Debounced map move function to prevent thrashing
+  const debouncedMapMove = useCallback((lngLat: [number, number]) => {
+    if (mapMoveTimeout.current) {
+      clearTimeout(mapMoveTimeout.current);
+    }
+    
+    mapMoveTimeout.current = setTimeout(() => {
+      if (!map.current) return;
+      
+      // Use jumpTo instead of easeTo for more stability
+      map.current.jumpTo({
+        center: lngLat,
+        zoom: currentZoom.current,
+      });
+    }, 100); // Short timeout for responsiveness but prevents thrashing
+  }, []);
+
+  // Update user marker with improved position smoothing
   useEffect(() => {
     if (!mapLoaded || !map.current || !currentLocation) return;
 
     const now = Date.now();
-    // Enhanced throttling for smoother performance
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const throttleTime = isMobile ? 250 : 100; // More aggressive throttling on mobile
-    
-    if (now - lastUpdate.current < throttleTime) return;
+    // Enhanced throttling for smoother performance - 300ms minimum between updates
+    if (now - lastUpdate.current < 300) return;
     lastUpdate.current = now;
 
     const lngLat: [number, number] = [currentLocation.longitude, currentLocation.latitude];
+    
+    // Position smoothing - if we have a previous position, do distance-based filtering
+    if (lastPosition.current) {
+      const [prevLng, prevLat] = lastPosition.current;
+      
+      // Calculate distance between current and previous positions
+      const dx = lngLat[0] - prevLng;
+      const dy = lngLat[1] - prevLat;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // Only update if the distance is significant or it's been a while
+      if (distance < 0.00001 && now - lastUpdate.current < 1000) {
+        return; // Skip tiny movements (noise)
+      }
+      
+      // Apply smoothed position - weight based on accuracy
+      const accuracyWeight = currentLocation.accuracy 
+        ? Math.min(1.0, 10 / currentLocation.accuracy)
+        : 0.7;
+        
+      const smoothedLng = prevLng + (lngLat[0] - prevLng) * accuracyWeight;
+      const smoothedLat = prevLat + (lngLat[1] - prevLat) * accuracyWeight;
+      
+      // Update last position
+      lastPosition.current = [smoothedLng, smoothedLat];
+      
+      // Use smoothed position
+      lngLat[0] = smoothedLng;
+      lngLat[1] = smoothedLat;
+    } else {
+      // First position
+      lastPosition.current = lngLat;
+    }
 
     if (!userMarker.current) {
       userMarker.current = new mapboxgl.Marker(createCustomMarker('user'))
@@ -182,21 +266,10 @@ const MapView: React.FC = () => {
       userMarker.current.setLngLat(lngLat);
     }
 
-    if (isTracking) {
-      // Use jumpTo instead of easeTo for smoother tracking on mobile
-      if (isMobile) {
-        map.current.jumpTo({
-          center: lngLat,
-        });
-      } else {
-        map.current.easeTo({
-          center: lngLat,
-          essential: true,
-          duration: 300,
-        });
-      }
+    if (isTracking && shouldRecenter.current) {
+      debouncedMapMove(lngLat);
     }
-  }, [currentLocation, mapLoaded, isTracking]);
+  }, [currentLocation, mapLoaded, isTracking, debouncedMapMove]);
 
   // Update route with optimization
   useEffect(() => {
@@ -208,7 +281,9 @@ const MapView: React.FC = () => {
       source.setData(routeGeoJson);
     }
 
+    // Only adjust the view when a new route is set or navigation starts
     if (isNavigating && route.geometry.coordinates.length > 0) {
+      // Fit bounds only on initial route display or route change, not continuously
       const coordinates = route.geometry.coordinates;
       const bounds = coordinates.reduce(
         (bounds, coord) => bounds.extend(coord as [number, number]),
@@ -216,12 +291,18 @@ const MapView: React.FC = () => {
       );
 
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      // Use different animation settings based on device
+      
+      // Use stable zoom and padding to prevent thrashing
       map.current.fitBounds(bounds, {
-        padding: isMobile ? 50 : 100,
+        padding: 100,
         maxZoom: 15,
-        duration: isMobile ? 500 : 1500, // Shorter duration on mobile for responsiveness
+        duration: 1000,
       });
+      
+      // After fitting to route, enable recentering after a short delay
+      setTimeout(() => {
+        shouldRecenter.current = true;
+      }, 2000);
     }
   }, [route, mapLoaded, isNavigating]);
 
