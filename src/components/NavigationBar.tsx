@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import { useLocation } from '@/contexts/LocationContext';
 import { useNavigation } from '@/contexts/NavigationContext';
-import { MapPin, Navigation, AlertTriangle, Settings, Home, GPS } from 'lucide-react';
+import { MapPin, Navigation, AlertTriangle, Settings, Home, Locate } from 'lucide-react';
 import SettingsModal from './SettingsModal';
 import SearchDestination from './SearchDestination';
 import { toast } from 'sonner';
@@ -68,7 +68,7 @@ const NavigationBar: React.FC = () => {
             title={isTracking ? 'Stop Tracking' : 'Start Tracking'}
             aria-label={isTracking ? 'Stop Tracking' : 'Start Tracking'}
           >
-            <GPS className="w-5 h-5" />
+            <Locate className="w-5 h-5" />
           </button>
           
           <button
