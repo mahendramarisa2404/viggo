@@ -44,6 +44,8 @@ let vibrationInterval: ReturnType<typeof setInterval> | null = null;
 let isVibrating = false;
 // Track alarm active state for UI usage
 let isAlarmActive = false;
+// Prevent alarm from retriggering after manual stop
+let isAlarmManuallyDisabled = false;
 // Allow subscribing to alarm state
 type AlarmListener = (active: boolean) => void;
 const alarmListeners: AlarmListener[] = [];
@@ -54,6 +56,20 @@ export const removeAlarmListener = (cb: AlarmListener) => {
 };
 const notifyAlarmListeners = () => {
   alarmListeners.forEach(cb => cb(isAlarmActive));
+};
+
+/**
+ * Reset the alarm manually disabled flag (used when location changes significantly)
+ */
+export const resetAlarmState = () => {
+  isAlarmManuallyDisabled = false;
+};
+
+/**
+ * Check if alarm can be triggered
+ */
+export const canTriggerAlarm = () => {
+  return !isAlarmManuallyDisabled;
 };
 
 /**
@@ -103,8 +119,8 @@ export const initAlarmAudio = () => {
  * @returns Promise that resolves when the audio starts playing
  */
 export const playAlarmSound = async () => {
-  // Don't start alarm if already running
-  if (isAlarmActive) return;
+  // Don't start alarm if already running or manually disabled
+  if (isAlarmActive || isAlarmManuallyDisabled) return;
   isAlarmActive = true;
   notifyAlarmListeners();
 
@@ -135,16 +151,16 @@ export const playAlarmSound = async () => {
   // Start vibration with graceful fallback
   try {
     if ('vibrate' in navigator) {
-      // Pattern: vibrate 500ms, pause 200ms, repeat
-      navigator.vibrate([500, 200, 500, 200]);
+      // Enhanced pattern: vibrate 500ms, pause 200ms, repeat
+      navigator.vibrate([500, 200, 500, 200, 500, 200]);
       isVibrating = true;
       console.log('Speed alert vibration started');
       
       vibrationInterval = setInterval(() => {
         if (isVibrating && 'vibrate' in navigator) {
-          navigator.vibrate([500, 200]);
+          navigator.vibrate([500, 200, 500, 200]);
         }
-      }, 1400);
+      }, 2000);
     } else {
       console.log('Vibration not supported on this device');
     }
@@ -156,10 +172,14 @@ export const playAlarmSound = async () => {
 
 /**
  * Stop alarm sound and vibration
+ * @param permanently If true, prevents alarm from triggering again until page reload
  */
-export const stopAlarmSound = () => {
+export const stopAlarmSound = (permanently = false) => {
   if (!isAlarmActive) return;
   isAlarmActive = false;
+  if (permanently) {
+    isAlarmManuallyDisabled = true;
+  }
   notifyAlarmListeners();
 
   // Stop sound
@@ -196,14 +216,20 @@ export const stopAlarmSound = () => {
   }
 };
 
-export { isAlarmActive };
+export { isAlarmActive, isAlarmManuallyDisabled };
 
 /**
  * Shows a proximity notification when user is near the college
  * @param collegeName Name of the college
  */
 export const showProximityNotification = (collegeName: string) => {
-  // Play alarm sound and vibration, lasting 30s max or until stop
+  // Don't show notification if alarm is manually disabled
+  if (isAlarmManuallyDisabled) {
+    console.log('Notification suppressed: alarm manually disabled');
+    return;
+  }
+
+  // Play alarm sound and vibration
   playAlarmSound();
 
   try {
@@ -212,6 +238,7 @@ export const showProximityNotification = (collegeName: string) => {
       icon: '/logo.png',
       requireInteraction: true,
       badge: '/logo.png',
+      tag: 'proximity-alert', // Use tag to prevent duplicate notifications
     });
     
     // Auto-close notification when alarm stops

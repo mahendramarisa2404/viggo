@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from '@/contexts/LocationContext';
 import { toast } from 'sonner';
-import { playAlarmSound, stopAlarmSound, isAlarmActive } from '@/utils/notificationUtils';
+import { playAlarmSound, stopAlarmSound, isAlarmActive, isAlarmManuallyDisabled } from '@/utils/notificationUtils';
 import { Button } from './ui/button';
 import { AlertTriangle } from 'lucide-react';
 
@@ -17,9 +17,18 @@ const SpeedAlert: React.FC = () => {
   // Track consecutive overspeed readings
   const overspeedStart = useRef<number | null>(null);
   const alarmTriggeredRef = useRef(false);
+  const toastIdRef = useRef<string | number | null>(null);
   
-  // Debounce speed alert to prevent rapid on/off switching
+  // Debounce speed alert to prevent rapid on/off switching with hysteresis
   useEffect(() => {
+    // Don't trigger if alarm has been manually disabled
+    if (isAlarmManuallyDisabled) {
+      if (isOverSpeedLimit) {
+        setIsOverSpeedLimit(false);
+      }
+      return;
+    }
+
     // Start counting time when speed exceeds limit
     if (speedData.speed > SPEED_LIMIT && !alarmTriggeredRef.current) {
       if (overspeedStart.current === null) {
@@ -30,29 +39,40 @@ const SpeedAlert: React.FC = () => {
         playAlarmSound();
         alarmTriggeredRef.current = true;
         
-        toast.error(`Speed Alert!`, {
+        toastIdRef.current = toast.error(`Speed Alert!`, {
           description: `You are exceeding the speed limit (${SPEED_LIMIT} km/h)`,
           duration: Infinity,
         });
       }
     } 
-    // Reset when speed is back under limit
-    else if (speedData.speed <= SPEED_LIMIT * 0.95) { // Hysteresis to prevent toggling
+    // Reset when speed is back under limit with hysteresis (95% of limit)
+    else if (speedData.speed <= SPEED_LIMIT * 0.95) { 
       overspeedStart.current = null;
       if (isOverSpeedLimit) {
         setIsOverSpeedLimit(false);
         stopAlarmSound();
         alarmTriggeredRef.current = false;
+        
+        if (toastIdRef.current !== null) {
+          toast.dismiss(toastIdRef.current);
+          toastIdRef.current = null;
+        }
       }
     }
   }, [speedData.speed, isOverSpeedLimit]);
 
   const handleStopAlarm = useCallback(() => {
-    stopAlarmSound();
+    stopAlarmSound(true); // Permanently disable
     setIsOverSpeedLimit(false);
     alarmTriggeredRef.current = false;
+    
+    if (toastIdRef.current !== null) {
+      toast.dismiss(toastIdRef.current);
+      toastIdRef.current = null;
+    }
+    
     toast.success("Speed alarm disabled", {
-      description: "Alarm will trigger again if you exceed speed limit"
+      description: "Speed alarm has been permanently disabled"
     });
   }, []);
 

@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { stopAlarmSound, isAlarmActive, addAlarmListener, removeAlarmListener } from '@/utils/notificationUtils';
-import { XCircle, BellOff } from 'lucide-react';
+import { BellOff } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
 
@@ -36,9 +36,10 @@ const StopAlarmButton: React.FC = () => {
   }, []);
 
   const handleStop = useCallback(() => {
-    stopAlarmSound();
+    // Pass true to permanently disable alarm until page reload
+    stopAlarmSound(true);
     toast.success("Alarm stopped", {
-      description: "Notifications and vibration have been disabled",
+      description: "Notifications and vibration have been disabled permanently",
       duration: 3000,
     });
     setVisible(false); // Immediately hide button after stopping

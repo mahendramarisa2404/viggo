@@ -7,6 +7,7 @@ import { useNavigation } from '@/contexts/NavigationContext';
 import { createRouteGeoJson } from '@/utils/mapboxUtils';
 import { School, User } from 'lucide-react';
 
+// Set a default token, but we will let this be overridable through context
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibWFoaW5kcmF4OTQ0MSIsImEiOiJjbTlteGRuaHcwZzJ4MmpxdXZuaTB4dno5In0.3E8Cne4Zb52xaNyXJlSa4Q';
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
@@ -16,6 +17,7 @@ const MapView: React.FC = () => {
   const userMarker = useRef<mapboxgl.Marker | null>(null);
   const collegeMarker = useRef<mapboxgl.Marker | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   // Track the last update time to throttle updates on mobile
   const lastUpdate = useRef<number>(0);
 
@@ -29,93 +31,108 @@ const MapView: React.FC = () => {
     // Check if we're on a mobile device
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/streets-v11',
-      center: [83.1669508, 17.7097776], // Initial center at Vignan Institute
-      zoom: 12,
-      attributionControl: false,
-      preserveDrawingBuffer: true, // Reduces flickering on some mobile devices
-      fadeDuration: isMobile ? 0 : 300, // Disable fade animations on mobile to reduce flickering
-      renderWorldCopies: false, // Disable world copies to improve performance
-      maxPitch: 60, // Limit pitch to improve performance
-      pitchWithRotate: !isMobile, // Disable pitch with rotate on mobile
-    });
+    try {
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/streets-v11',
+        center: [83.1669508, 17.7097776], // Initial center at Vignan Institute
+        zoom: 12,
+        attributionControl: false,
+        preserveDrawingBuffer: true, // Reduces flickering on some mobile devices
+        fadeDuration: isMobile ? 0 : 300, // Disable fade animations on mobile to reduce flickering
+        renderWorldCopies: false, // Disable world copies to improve performance
+        maxPitch: 60, // Limit pitch to improve performance
+        pitchWithRotate: !isMobile, // Disable pitch with rotate on mobile
+      });
 
-    // Optimize for mobile
-    if (isMobile) {
-      map.current.dragRotate.disable(); // Disable drag rotation on mobile
-      map.current.touchZoomRotate.disableRotation(); // Disable rotation on mobile
+      // Optimize for mobile
+      if (isMobile) {
+        map.current.dragRotate.disable(); // Disable drag rotation on mobile
+        map.current.touchZoomRotate.disableRotation(); // Disable rotation on mobile
+      }
+
+      // Add minimal controls
+      map.current.addControl(
+        new mapboxgl.NavigationControl({
+          showCompass: !isMobile,
+          showZoom: true,
+          visualizePitch: false
+        }),
+        'top-right'
+      );
+
+      // Add error handling
+      map.current.on('error', (e) => {
+        console.error('Mapbox error:', e);
+        setMapError('Error loading map');
+      });
+
+      map.current.on('load', () => {
+        setMapLoaded(true);
+        setMapError(null);
+
+        if (!map.current) return;
+
+        map.current.addSource('route', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'LineString',
+              coordinates: [],
+            },
+          },
+        });
+
+        map.current.addLayer({
+          id: 'route',
+          type: 'line',
+          source: 'route',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+          },
+          paint: {
+            'line-color': '#4A90E2',
+            'line-width': 5,
+            'line-opacity': 0.8,
+          },
+        });
+
+        map.current.addSource('college-radius', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'Point',
+              coordinates: [collegeInfo.location.longitude, collegeInfo.location.latitude],
+            },
+          },
+        });
+
+        map.current.addLayer({
+          id: 'college-radius',
+          type: 'circle',
+          source: 'college-radius',
+          paint: {
+            'circle-radius': {
+              stops: [[0, 0], [20, collegeInfo.notificationRadius * 50]],
+              base: 2,
+            },
+            'circle-color': '#8C65AA',
+            'circle-opacity': 0.2,
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#8C65AA',
+          },
+        });
+      });
+
+    } catch (err) {
+      console.error('Error initializing map:', err);
+      setMapError('Could not initialize map');
     }
-
-    // Add minimal controls
-    map.current.addControl(
-      new mapboxgl.NavigationControl({
-        showCompass: !isMobile,
-        showZoom: true,
-        visualizePitch: false
-      }),
-      'top-right'
-    );
-
-    map.current.on('load', () => {
-      setMapLoaded(true);
-
-      map.current?.addSource('route', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: [],
-          },
-        },
-      });
-
-      map.current?.addLayer({
-        id: 'route',
-        type: 'line',
-        source: 'route',
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round',
-        },
-        paint: {
-          'line-color': '#4A90E2',
-          'line-width': 5,
-          'line-opacity': 0.8,
-        },
-      });
-
-      map.current?.addSource('college-radius', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'Point',
-            coordinates: [collegeInfo.location.longitude, collegeInfo.location.latitude],
-          },
-        },
-      });
-
-      map.current?.addLayer({
-        id: 'college-radius',
-        type: 'circle',
-        source: 'college-radius',
-        paint: {
-          'circle-radius': {
-            stops: [[0, 0], [20, collegeInfo.notificationRadius * 50]],
-            base: 2,
-          },
-          'circle-color': '#8C65AA',
-          'circle-opacity': 0.2,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#8C65AA',
-        },
-      });
-    });
 
     return () => {
       if (map.current) {
@@ -143,13 +160,16 @@ const MapView: React.FC = () => {
     }
   }, [mapLoaded, collegeInfo]);
 
-  // Update user marker with throttling for better performance
+  // Update user marker with improved throttling for better performance
   useEffect(() => {
     if (!mapLoaded || !map.current || !currentLocation) return;
 
     const now = Date.now();
-    // Throttle updates on mobile to avoid flickering
-    if (now - lastUpdate.current < 150) return;
+    // Enhanced throttling for smoother performance
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const throttleTime = isMobile ? 250 : 100; // More aggressive throttling on mobile
+    
+    if (now - lastUpdate.current < throttleTime) return;
     lastUpdate.current = now;
 
     const lngLat: [number, number] = [currentLocation.longitude, currentLocation.latitude];
@@ -163,12 +183,18 @@ const MapView: React.FC = () => {
     }
 
     if (isTracking) {
-      // Use easeTo instead of flyTo for smoother animation on mobile
-      map.current.easeTo({
-        center: lngLat,
-        essential: true,
-        duration: 500,
-      });
+      // Use jumpTo instead of easeTo for smoother tracking on mobile
+      if (isMobile) {
+        map.current.jumpTo({
+          center: lngLat,
+        });
+      } else {
+        map.current.easeTo({
+          center: lngLat,
+          essential: true,
+          duration: 300,
+        });
+      }
     }
   }, [currentLocation, mapLoaded, isTracking]);
 
@@ -189,11 +215,12 @@ const MapView: React.FC = () => {
         new mapboxgl.LngLatBounds(coordinates[0] as [number, number], coordinates[0] as [number, number])
       );
 
-      // Use longer duration for smoother animation
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      // Use different animation settings based on device
       map.current.fitBounds(bounds, {
-        padding: 100,
+        padding: isMobile ? 50 : 100,
         maxZoom: 15,
-        duration: 1500,
+        duration: isMobile ? 500 : 1500, // Shorter duration on mobile for responsiveness
       });
     }
   }, [route, mapLoaded, isNavigating]);
@@ -232,7 +259,36 @@ const MapView: React.FC = () => {
     return el;
   }, []);
 
-  return <div ref={mapContainer} className="w-full h-full rounded-lg" />;
+  // Display a loading or error state
+  if (mapError) {
+    return (
+      <div className="flex items-center justify-center h-full bg-gray-100 rounded-lg p-4">
+        <div className="text-center">
+          <p className="text-red-500 mb-2">{mapError}</p>
+          <button 
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            onClick={() => window.location.reload()}
+          >
+            Reload Map
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div ref={mapContainer} className="w-full h-full rounded-lg" />
+      {!mapLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-75 rounded-lg">
+          <div className="text-center">
+            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+            <p>Loading map...</p>
+          </div>
+        </div>
+      )}
+    </>
+  );
 };
 
 export default MapView;

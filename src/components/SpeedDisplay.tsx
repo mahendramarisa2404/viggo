@@ -7,24 +7,42 @@ const SpeedDisplay: React.FC = () => {
   const { speedData, gpsAccuracy } = useLocation();
   const [displaySpeed, setDisplaySpeed] = useState(0);
   const [speedAnimation, setSpeedAnimation] = useState<string>('');
+  const [speedTrend, setSpeedTrend] = useState<'rising' | 'falling' | 'stable'>('stable');
 
-  // Smooth speed updates with exponential moving average
+  // Enhanced smoothing for speed updates with adaptive smoothing factor
   useEffect(() => {
-    const smoothingFactor = 0.3; // Lower value = smoother transitions
+    // Adjust smoothing based on GPS accuracy
+    const accuracyFactor = gpsAccuracy.value !== null ? 
+      Math.min(1, 10 / (gpsAccuracy.value || 10)) : 0.5;
+    
+    const smoothingFactor = 0.2 + (0.3 * accuracyFactor); // 0.2-0.5 range based on accuracy
+    
+    // Previous speed value
+    const prevSpeed = displaySpeed;
+    
+    // New smoothed speed value
     setDisplaySpeed(prev => {
-      // If change is too drastic, use direct value to avoid lag in important updates
+      // For very large changes, use direct value to avoid lag in important updates
       if (Math.abs(prev - speedData.speed) > 10) {
         return speedData.speed;
       }
       return prev * (1 - smoothingFactor) + speedData.speed * smoothingFactor;
     });
 
+    // Set speed trend for visual indication
+    if (Math.abs(speedData.speed - prevSpeed) > 0.5) {
+      setSpeedTrend(speedData.speed > prevSpeed ? 'rising' : 'falling');
+    } else {
+      setSpeedTrend('stable');
+    }
+
+    // Brief animation on speed change
     setSpeedAnimation('animate-pulse');
     const timer = setTimeout(() => {
       setSpeedAnimation('');
     }, 300);
     return () => clearTimeout(timer);
-  }, [speedData.speed]);
+  }, [speedData.speed, gpsAccuracy.value]);
 
   // Round to 1 decimal place for display
   const roundedSpeed = Math.round(displaySpeed * 10) / 10;
@@ -56,6 +74,16 @@ const SpeedDisplay: React.FC = () => {
     return <WifiIcon className="w-5 h-5 text-green-500" />;
   }, [gpsAccuracy.level]);
 
+  const getTrendIndicator = () => {
+    if (speedTrend === 'rising') {
+      return <span className="text-green-500 ml-1">↑</span>;
+    }
+    if (speedTrend === 'falling') {
+      return <span className="text-red-500 ml-1">↓</span>;
+    }
+    return null;
+  };
+
   return (
     <div className="bg-white p-4 rounded-lg shadow-md">
       <div className="flex items-center justify-between mb-2">
@@ -69,6 +97,7 @@ const SpeedDisplay: React.FC = () => {
       <div className="flex items-center justify-center">
         <div className={`text-4xl font-bold ${getSpeedColor(roundedSpeed)} ${speedAnimation}`}>
           {roundedSpeed.toFixed(1)}
+          {getTrendIndicator()}
         </div>
         <div className="ml-2 text-lg text-gray-600">km/h</div>
       </div>

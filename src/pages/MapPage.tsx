@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import MapView from '@/components/MapView';
 import SpeedDisplay from '@/components/SpeedDisplay';
@@ -6,7 +7,7 @@ import AccuracyIndicator from '@/components/AccuracyIndicator';
 import NavigationBar from '@/components/NavigationBar';
 import LocationFallback from '@/components/LocationFallback';
 import { useLocation } from '@/contexts/LocationContext';
-import { initAlarmAudio } from '@/utils/notificationUtils';
+import { initAlarmAudio, resetAlarmState } from '@/utils/notificationUtils';
 import { toast } from '@/components/ui/sonner';
 import StopAlarmButton from '@/components/StopAlarmButton';
 import SpeedAlert from '@/components/SpeedAlert';
@@ -16,7 +17,9 @@ const MapPage: React.FC = () => {
   const [locationError, setLocationError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Initialize audio & notification systems
     initAlarmAudio();
+    resetAlarmState(); // Reset alarm state on page load
     
     if ('Notification' in window) {
       Notification.requestPermission().then(permission => {
@@ -32,6 +35,7 @@ const MapPage: React.FC = () => {
       });
     }
 
+    // Set up audio context on user interaction to enable sound on iOS/Safari
     const setupAudioContext = () => {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioContext) {
@@ -42,6 +46,7 @@ const MapPage: React.FC = () => {
       }
     };
 
+    // Add event listeners to unlock audio
     document.addEventListener('click', setupAudioContext, { once: true });
     document.addEventListener('touchstart', setupAudioContext, { once: true });
 
@@ -99,16 +104,16 @@ const MapPage: React.FC = () => {
       </div>
 
       <div className="flex-1 relative p-4 pt-0">
-        <div className="h-full rounded-lg overflow-hidden shadow-lg">
+        <div className="h-full rounded-lg overflow-hidden shadow-lg" style={{ minHeight: '60vh' }}>
           <MapView />
         </div>
 
-        <div className="absolute top-8 right-4 w-56 space-y-4">
+        <div className="absolute top-8 right-4 w-56 space-y-4 z-10">
           <SpeedDisplay />
           <ETADisplay />
         </div>
 
-        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 w-11/12 max-w-md">
+        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 w-11/12 max-w-md z-10">
           <AccuracyIndicator />
         </div>
 

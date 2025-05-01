@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -97,5 +98,42 @@
 
   body {
     @apply bg-background text-foreground;
+    overscroll-behavior: none; /* Prevent pull-to-refresh on mobile */
   }
+}
+
+/* Fix mapbox controls for better mobile experience */
+.mapboxgl-ctrl-top-right {
+  top: 10px !important;
+  right: 10px !important;
+}
+
+.mapboxgl-ctrl-bottom-right {
+  bottom: 10px !important;
+  right: 10px !important;
+}
+
+/* Make map container fill available space */
+.mapboxgl-map {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Fix for iOS safari height issues */
+@supports (-webkit-touch-callout: none) {
+  .h-screen {
+    height: -webkit-fill-available;
+  }
+}
+
+/* Custom marker styles */
+.user-marker,
+.school-marker {
+  transition: all 0.3s ease-out;
+}
+
+/* Prevent text selection on controls */
+.user-select-none {
+  -webkit-user-select: none;
+  user-select: none;
 }

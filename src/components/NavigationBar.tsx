@@ -2,10 +2,11 @@
 import React, { useState, useCallback } from 'react';
 import { useLocation } from '@/contexts/LocationContext';
 import { useNavigation } from '@/contexts/NavigationContext';
-import { MapPin, Navigation, AlertTriangle, Settings, Home } from 'lucide-react';
+import { MapPin, Navigation, AlertTriangle, Settings, Home, GPS } from 'lucide-react';
 import SettingsModal from './SettingsModal';
 import SearchDestination from './SearchDestination';
 import { toast } from 'sonner';
+import { resetAlarmState } from '@/utils/notificationUtils';
 
 const NavigationBar: React.FC = () => {
   const { startLocationTracking, stopLocationTracking, isTracking, isNearCollege, collegeInfo } = useLocation();
@@ -29,12 +30,14 @@ const NavigationBar: React.FC = () => {
     } else {
       // Navigate to college if no destination set
       startNavigation();
+      resetAlarmState(); // Reset alarm state when starting new navigation
       toast.success("Navigation to college started");
     }
   }, [isNavigating, startNavigation, stopNavigation]);
   
   const handleNavigateToCollege = useCallback(() => {
     startNavigation(collegeInfo.location);
+    resetAlarmState(); // Reset alarm state when starting new navigation
     toast.success(`Navigating to ${collegeInfo.name}`, {
       description: "Route to college calculated"
     });
@@ -56,15 +59,16 @@ const NavigationBar: React.FC = () => {
           <h1 className="text-lg font-bold text-[#ea384c]">Viggo</h1>
         </div>
         
-        <div className="flex space-x-3">
+        <div className="flex space-x-2">
           <button
             onClick={handleToggleTracking}
             className={`flex items-center justify-center p-2 rounded-full ${
               isTracking ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'
             }`}
             title={isTracking ? 'Stop Tracking' : 'Start Tracking'}
+            aria-label={isTracking ? 'Stop Tracking' : 'Start Tracking'}
           >
-            <MapPin className="w-5 h-5" />
+            <GPS className="w-5 h-5" />
           </button>
           
           <button
@@ -73,6 +77,7 @@ const NavigationBar: React.FC = () => {
               isNavigating ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'
             }`}
             title={isNavigating ? 'Stop Navigation' : 'Start Navigation'}
+            aria-label={isNavigating ? 'Stop Navigation' : 'Start Navigation'}
           >
             <Navigation className="w-5 h-5" />
           </button>
@@ -81,6 +86,7 @@ const NavigationBar: React.FC = () => {
             onClick={handleNavigateToCollege}
             className="flex items-center justify-center p-2 rounded-full bg-purple-100 text-purple-600 hover:bg-purple-200"
             title="Navigate to College"
+            aria-label="Navigate to College"
           >
             <Home className="w-5 h-5" />
           </button>
@@ -89,6 +95,7 @@ const NavigationBar: React.FC = () => {
             onClick={handleOpenSettings}
             className="flex items-center justify-center p-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
             title="Settings"
+            aria-label="Settings"
           >
             <Settings className="w-5 h-5" />
           </button>

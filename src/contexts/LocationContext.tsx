@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { Location, GpsAccuracy, SpeedData, CollegeInfo } from '@/types';
 import { calculateSpeed, getGpsAccuracyLevel, isWithinRadius } from '@/utils/locationUtils';
-import { showProximityNotification } from '@/utils/notificationUtils';
+import { showProximityNotification, isAlarmManuallyDisabled } from '@/utils/notificationUtils';
 import { toast } from '@/components/ui/sonner';
 
 interface LocationContextType {
@@ -61,6 +61,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   const [isTracking, setIsTracking] = useState<boolean>(false);
   const [watchId, setWatchId] = useState<number | null>(null);
   const [locationHistory, setLocationHistory] = useState<Location[]>([]);
+  const lastProximityCheckRef = React.useRef<number>(0);
 
   const updateLocation = (location: Location) => {
     if (currentLocation) {
@@ -69,6 +70,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     
     setCurrentLocation(location);
     
+    // Keep a rolling history of the last 5 locations for improved speed calculations
     setLocationHistory(prev => {
       const newHistory = [...prev, location];
       if (newHistory.length > 5) {
@@ -77,17 +79,21 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
       return newHistory;
     });
     
+    // Update GPS accuracy
     if (location.accuracy !== undefined) {
       setGpsAccuracy(getGpsAccuracyLevel(location.accuracy));
     }
     
+    // Calculate speed with improved accuracy and smoothing
     if (previousLocation && previousLocation.timestamp && location.timestamp) {
       const rawSpeed = calculateSpeed(previousLocation, location);
       
+      // Enhanced adaptive smoothing based on GPS accuracy
       const accuracyFactor = location.accuracy ? Math.min(1, 5 / location.accuracy) : 0.5;
       const smoothingWeight = 0.3 + (0.4 * accuracyFactor);
       const smoothedSpeed = speedData.speed * (1 - smoothingWeight) + rawSpeed * smoothingWeight;
       
+      // Cap maximum speed changes to prevent jumps
       const maxSpeedChange = 20;
       const cappedSpeed = Math.abs(smoothedSpeed - speedData.speed) > maxSpeedChange ?
         speedData.speed + (Math.sign(smoothedSpeed - speedData.speed) * maxSpeedChange) :
@@ -100,21 +106,33 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
       });
     }
     
+    // Check if near college with throttling to avoid duplicate notifications
+    // and respecting the manual disable state
     if (location && collegeInfo) {
-      const nearCollege = isWithinRadius(
-        location,
-        collegeInfo.location,
-        collegeInfo.notificationRadius
-      );
-      
-      if (nearCollege && !isNearCollege) {
-        setIsNearCollege(true);
-        if (!hasShownProximityAlert) {
-          showProximityNotification(collegeInfo.name);
-          setHasShownProximityAlert(true);
+      const now = Date.now();
+      // Only check proximity every 2 seconds to reduce processing
+      if (now - lastProximityCheckRef.current > 2000) {
+        lastProximityCheckRef.current = now;
+        
+        const nearCollege = isWithinRadius(
+          location,
+          collegeInfo.location,
+          collegeInfo.notificationRadius
+        );
+        
+        if (nearCollege && !isNearCollege) {
+          setIsNearCollege(true);
+          if (!hasShownProximityAlert && !isAlarmManuallyDisabled) {
+            showProximityNotification(collegeInfo.name);
+            setHasShownProximityAlert(true);
+            
+            toast.info(`Near ${collegeInfo.name}`, {
+              description: `You are within ${collegeInfo.notificationRadius} meters of your destination`,
+            });
+          }
+        } else if (!nearCollege && isNearCollege) {
+          setIsNearCollege(false);
         }
-      } else if (!nearCollege && isNearCollege) {
-        setIsNearCollege(false);
       }
     }
   };
@@ -140,7 +158,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
           (error) => {
             console.error('Error getting location:', error);
             toast.error("Location error", {
-              description: "Please check location permissions and try again"
+              description: `${error.message}. Please check location permissions and try again.`
             });
           },
           {
