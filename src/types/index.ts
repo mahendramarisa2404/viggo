@@ -1,5 +1,4 @@
 
-
 // Common types for the application
 
 export interface Location {
@@ -44,4 +43,3 @@ export interface GpsAccuracy {
   level: 'high' | 'medium' | 'low' | 'unknown';
   value: number | null; // in meters
 }
-

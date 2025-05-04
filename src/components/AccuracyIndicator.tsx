@@ -1,10 +1,10 @@
 
 import React from 'react';
 import { useLocation } from '@/contexts/LocationContext';
-import { Signal, SignalHigh, SignalMedium, SignalLow, SignalZero } from 'lucide-react';
+import { Signal, SignalHigh, SignalMedium, SignalLow, SignalZero, Loader2 } from 'lucide-react';
 
 const AccuracyIndicator: React.FC = () => {
-  const { gpsAccuracy } = useLocation();
+  const { gpsAccuracy, isTracking } = useLocation();
 
   const getAccuracyColor = () => {
     switch (gpsAccuracy.level) {
@@ -20,6 +20,10 @@ const AccuracyIndicator: React.FC = () => {
   };
 
   const getAccuracyIcon = () => {
+    if (!isTracking) {
+      return <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />;
+    }
+    
     switch (gpsAccuracy.level) {
       case 'high':
         return <SignalHigh className="w-5 h-5 text-green-500" />;
@@ -33,6 +37,10 @@ const AccuracyIndicator: React.FC = () => {
   };
 
   const getAccuracyText = () => {
+    if (!isTracking) {
+      return 'Waiting for GPS...';
+    }
+    
     switch (gpsAccuracy.level) {
       case 'high':
         return 'High Accuracy';
@@ -46,7 +54,7 @@ const AccuracyIndicator: React.FC = () => {
   };
 
   const getAccuracyPercentage = () => {
-    if (gpsAccuracy.level === 'unknown') return 0;
+    if (!isTracking || gpsAccuracy.level === 'unknown') return 0;
     if (gpsAccuracy.level === 'low') return 33;
     if (gpsAccuracy.level === 'medium') return 66;
     return 100;

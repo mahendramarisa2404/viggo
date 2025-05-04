@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useContext, useEffect, useRef, ReactNode } from 'react';
 import { RouteInfo, EtaInfo, Location } from '@/types';
 import { getDirections, calculateEta } from '@/utils/mapboxUtils';
@@ -67,10 +68,14 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
   const [navigationHistory, setNavigationHistory] = useState<Location[]>(loadNavigationHistory);
   const routeUpdateInterval = useRef<NodeJS.Timeout | null>(null);
   const lastDestination = useRef<Location | null>(null);
+  const routeRetryCount = useRef<number>(0);
+  const maxRetries = 3;
 
   // Start navigation to a destination
   const startNavigation = async (dest: Location = collegeInfo.location) => {
     try {
+      console.log("Starting navigation to:", dest);
+      
       if (!currentLocation) {
         throw new Error('Current location is not available');
       }
@@ -93,15 +98,9 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
       setIsNavigating(true);
       setIsLoadingRoute(true);
       setError(null);
+      routeRetryCount.current = 0;
       
-      const routeInfo = await getDirections(currentLocation, dest);
-      
-      if (!routeInfo) {
-        throw new Error('Could not get directions');
-      }
-      
-      setRoute(routeInfo);
-      setEta(calculateEta(routeInfo));
+      await fetchAndSetRoute(currentLocation, dest);
       
       // Add to navigation history if this is a new destination
       if (!isSameDestination) {
@@ -126,10 +125,13 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
         clearInterval(routeUpdateInterval.current);
       }
       
-      // Set up interval to periodically update route (every 5 seconds instead of 30)
+      // Set up interval to periodically update route (every 5 seconds)
       const interval = setInterval(updateRoute, 5000);
       routeUpdateInterval.current = interval;
+      
+      console.log("Navigation started successfully");
     } catch (err) {
+      console.error("Navigation error:", err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
       toast.error("Navigation error", {
         description: err instanceof Error ? err.message : 'Failed to get directions'
@@ -139,8 +141,38 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
     }
   };
 
+  // Helper function to fetch route with retries
+  const fetchAndSetRoute = async (origin: Location, dest: Location): Promise<boolean> => {
+    try {
+      const routeInfo = await getDirections(origin, dest);
+      
+      if (!routeInfo) {
+        throw new Error('Could not get directions');
+      }
+      
+      setRoute(routeInfo);
+      setEta(calculateEta(routeInfo));
+      return true;
+    } catch (err) {
+      console.error('Error fetching route:', err);
+      
+      // Retry logic
+      if (routeRetryCount.current < maxRetries) {
+        routeRetryCount.current++;
+        console.log(`Retrying route fetch (${routeRetryCount.current}/${maxRetries})`);
+        
+        // Wait a bit before retry
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return fetchAndSetRoute(origin, dest);
+      }
+      
+      throw err; // Rethrow after max retries
+    }
+  };
+
   // Stop navigation
   const stopNavigation = () => {
+    console.log("Stopping navigation");
     setIsNavigating(false);
     // Keep the destination and route in memory for reference
     // but mark navigation as inactive
@@ -154,19 +186,22 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
 
   // Update route based on current location
   const updateRoute = async () => {
+    if (!currentLocation || !destination || !isNavigating) {
+      return;
+    }
+    
     try {
-      if (!currentLocation || !destination || !isNavigating) {
-        return;
-      }
-      
+      console.log("Updating route...");
       setIsLoadingRoute(true);
       
       const routeInfo = await getDirections(currentLocation, destination);
       
       if (!routeInfo) {
-        throw new Error('Could not update directions');
+        console.warn("Could not update directions");
+        return;
       }
       
+      console.log("Route updated successfully");
       setRoute(routeInfo);
       setEta(calculateEta(routeInfo));
     } catch (err) {

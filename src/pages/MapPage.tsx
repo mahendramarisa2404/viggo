@@ -7,14 +7,17 @@ import AccuracyIndicator from '@/components/AccuracyIndicator';
 import NavigationBar from '@/components/NavigationBar';
 import LocationFallback from '@/components/LocationFallback';
 import { useLocation } from '@/contexts/LocationContext';
+import { useNavigation } from '@/contexts/NavigationContext';
 import { initAlarmAudio, resetAlarmState } from '@/utils/notificationUtils';
 import { toast } from '@/components/ui/sonner';
 import StopAlarmButton from '@/components/StopAlarmButton';
 import SpeedAlert from '@/components/SpeedAlert';
+import { MapPin } from 'lucide-react';
 
 const MapPage: React.FC = () => {
-  const { startLocationTracking, isTracking, currentLocation } = useLocation();
-  const [locationError, setLocationError] = useState<string | null>(null);
+  const { startLocationTracking, isTracking, currentLocation, locationError } = useLocation();
+  const { isNavigating, startNavigation, destination } = useNavigation();
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
     // Initialize audio & notification systems
@@ -52,6 +55,9 @@ const MapPage: React.FC = () => {
 
     // Set document title
     document.title = "Viggo";
+    
+    // Mark initialization as complete
+    setTimeout(() => setIsInitializing(false), 2000);
 
     return () => {
       document.removeEventListener('click', setupAudioContext);
@@ -60,27 +66,67 @@ const MapPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isTracking) {
-      try {
-        startLocationTracking();
-        setLocationError(null);
-      } catch (err) {
-        setLocationError('Unable to access location services');
-        console.error('Location error:', err);
+    const initializeTracking = async () => {
+      if (!isTracking) {
+        try {
+          const success = await startLocationTracking();
+          if (!success) {
+            console.error("Failed to start location tracking");
+          }
+        } catch (err) {
+          console.error('Location initialization error:', err);
+        }
       }
-    }
-  }, []);
+    };
+    
+    initializeTracking();
+  }, [isTracking, startLocationTracking]);
 
-  const handleRetryLocation = () => {
+  // Auto-start navigation to college when we have a location but no navigation active
+  useEffect(() => {
+    if (currentLocation && !isNavigating && !isInitializing && !destination) {
+      // Small delay to ensure UI is ready
+      console.log("Auto-starting navigation to college");
+      setTimeout(() => {
+        startNavigation().catch(err => {
+          console.error("Error auto-starting navigation:", err);
+        });
+      }, 1000);
+    }
+  }, [currentLocation, isNavigating, isInitializing, destination, startNavigation]);
+
+  const handleRetryLocation = async () => {
     try {
-      startLocationTracking();
-      setLocationError(null);
+      const success = await startLocationTracking();
+      if (!success) {
+        toast.error("Location tracking failed", { 
+          description: "Please check your device settings and try again" 
+        });
+      }
     } catch (err) {
-      setLocationError('Unable to access location services');
       console.error('Location retry error:', err);
     }
   };
 
+  // Show loading screen during initial startup
+  if (isInitializing) {
+    return (
+      <div className="flex flex-col h-screen w-full bg-gray-50">
+        <div className="p-4">
+          <NavigationBar />
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <h2 className="text-xl font-semibold text-gray-700">Initializing Viggo</h2>
+            <p className="text-gray-500 mt-2">Getting location and navigation ready...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show fallback if there's a location error or we're still waiting for first location
   if (locationError || (!currentLocation && isTracking)) {
     return (
       <div className="flex flex-col h-screen w-full bg-gray-50">
@@ -116,6 +162,20 @@ const MapPage: React.FC = () => {
         <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 w-11/12 max-w-md z-10">
           <AccuracyIndicator />
         </div>
+        
+        {!isNavigating && currentLocation && (
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white bg-opacity-90 p-4 rounded-lg shadow-lg z-10 text-center">
+            <MapPin className="w-8 h-8 text-blue-500 mx-auto mb-2" />
+            <h3 className="font-semibold text-lg">Starting Navigation</h3>
+            <p className="text-gray-600 text-sm mb-3">Tap anywhere to continue</p>
+            <button 
+              onClick={() => startNavigation()}
+              className="bg-blue-500 text-white px-4 py-2 rounded-lg"
+            >
+              Navigate to College
+            </button>
+          </div>
+        )}
 
         <StopAlarmButton />
         <SpeedAlert />

@@ -5,13 +5,13 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { useLocation } from '@/contexts/LocationContext';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { createRouteGeoJson } from '@/utils/mapboxUtils';
-import { School, User, MapPin, Focus } from 'lucide-react';
+import { School, User, MapPin, Focus, RefreshCw } from 'lucide-react';
 
 // Set a default token, but we will let this be overridable through context
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibWFoaW5kcmF4OTQ0MSIsImEiOiJjbTlteGRuaHcwZzJ4MmpxdXZuaTB4dno5In0.3E8Cne4Zb52xaNyXJlSa4Q';
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
-const RECENTER_TIMEOUT = 30000; // 30 seconds (up from 10 seconds)
+const RECENTER_TIMEOUT = 30000; // 30 seconds
 const UPDATE_THRESHOLD_MS = 300; // Minimum time between map position updates
 
 const MapView: React.FC = () => {
@@ -35,6 +35,7 @@ const MapView: React.FC = () => {
   // Debounce timer for map movements
   const mapMoveTimeout = useRef<NodeJS.Timeout | null>(null);
   const [showRecenterButton, setShowRecenterButton] = useState(false);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
 
   const { currentLocation, collegeInfo, isTracking } = useLocation();
   const { route, isNavigating } = useNavigation();
@@ -44,6 +45,7 @@ const MapView: React.FC = () => {
   
   // Optimize map for mobile
   useEffect(() => {
+    console.log("Initializing map...");
     if (!mapContainer.current) return;
 
     try {
@@ -99,7 +101,7 @@ const MapView: React.FC = () => {
         }
       });
 
-      // Auto-recenter after long period of no interaction (increased to 30 seconds)
+      // Auto-recenter after long period of no interaction
       const autoRecenterInterval = setInterval(() => {
         const now = Date.now();
         if (!shouldRecenter.current && now - lastUserInteraction.current > RECENTER_TIMEOUT) {
@@ -115,6 +117,7 @@ const MapView: React.FC = () => {
       });
 
       map.current.on('load', () => {
+        console.log("Map loaded successfully");
         setMapLoaded(true);
         setMapError(null);
 
@@ -147,6 +150,7 @@ const MapView: React.FC = () => {
           },
         });
 
+        // Add college radius circle
         map.current.addSource('college-radius', {
           type: 'geojson',
           data: {
@@ -174,6 +178,9 @@ const MapView: React.FC = () => {
             'circle-stroke-color': '#8C65AA',
           },
         });
+        
+        // Create college marker now that the map is loaded
+        createCollegeMarker();
       });
 
       return () => {
@@ -188,10 +195,10 @@ const MapView: React.FC = () => {
     }
   }, []);
 
-  // Add college marker
-  useEffect(() => {
-    if (!mapLoaded || !map.current) return;
-
+  // Create and add college marker
+  const createCollegeMarker = useCallback(() => {
+    if (!map.current) return;
+    
     if (!collegeMarker.current) {
       collegeMarker.current = new mapboxgl.Marker(createCustomMarker('school'))
         .setLngLat([collegeInfo.location.longitude, collegeInfo.location.latitude])
@@ -205,7 +212,7 @@ const MapView: React.FC = () => {
           .addTo(map.current);
       }
     }
-  }, [mapLoaded, collegeInfo]);
+  }, [collegeInfo]);
 
   // Fixed map movement function to prevent thrashing
   const moveMapToPosition = useCallback((lngLat: [number, number]) => {
@@ -232,6 +239,7 @@ const MapView: React.FC = () => {
   useEffect(() => {
     if (!mapLoaded || !map.current || !currentLocation) return;
 
+    console.log("Updating user marker position:", currentLocation);
     const now = Date.now();
     // Enhanced throttling - use larger time gaps on mobile
     if (now - lastUpdate.current < (isMobileDevice ? UPDATE_THRESHOLD_MS : 150)) return;
@@ -287,38 +295,51 @@ const MapView: React.FC = () => {
 
   // Update route with optimization
   useEffect(() => {
-    if (!mapLoaded || !map.current || !route) return;
+    if (!mapLoaded || !map.current) return;
+    
+    if (route) {
+      console.log("Updating route display");
+      setIsLoadingRoute(true);
+      
+      const source = map.current.getSource('route');
+      if (source && 'setData' in source) {
+        const routeGeoJson = createRouteGeoJson(route);
+        source.setData(routeGeoJson);
+      }
 
-    const source = map.current.getSource('route');
-    if (source && 'setData' in source) {
-      const routeGeoJson = createRouteGeoJson(route);
-      source.setData(routeGeoJson);
-    }
-
-    // Only adjust the view when a new route is set or navigation starts
-    if (isNavigating && route.geometry.coordinates.length > 0) {
-      // Store the current zoom before fitting bounds
-      const prevZoom = userZoom !== null ? userZoom : currentZoom.current;
+      // Only adjust the view when a new route is set or navigation starts
+      if (isNavigating && route.geometry.coordinates.length > 0) {
+        // Store the current zoom before fitting bounds
+        const prevZoom = userZoom !== null ? userZoom : currentZoom.current;
+        
+        // Fit bounds only on initial route display or route change, not continuously
+        const coordinates = route.geometry.coordinates;
+        const bounds = coordinates.reduce(
+          (bounds, coord) => bounds.extend(coord as [number, number]),
+          new mapboxgl.LngLatBounds(coordinates[0] as [number, number], coordinates[0] as [number, number])
+        );
+        
+        // Use more stable zoom and padding to prevent thrashing
+        map.current.fitBounds(bounds, {
+          padding: {top: 100, bottom: 100, left: 50, right: 50},
+          maxZoom: Math.min(15, prevZoom + 1), // Don't zoom in too much from current level
+          duration: 1000,
+        });
+        
+        // After fitting to route, enable recentering after a short delay
+        setTimeout(() => {
+          shouldRecenter.current = true;
+          setShowRecenterButton(false);
+        }, 3000);
+      }
       
-      // Fit bounds only on initial route display or route change, not continuously
-      const coordinates = route.geometry.coordinates;
-      const bounds = coordinates.reduce(
-        (bounds, coord) => bounds.extend(coord as [number, number]),
-        new mapboxgl.LngLatBounds(coordinates[0] as [number, number], coordinates[0] as [number, number])
-      );
-      
-      // Use more stable zoom and padding to prevent thrashing
-      map.current.fitBounds(bounds, {
-        padding: {top: 100, bottom: 100, left: 50, right: 50},
-        maxZoom: Math.min(15, prevZoom + 1), // Don't zoom in too much from current level
-        duration: 1000,
-      });
-      
-      // After fitting to route, enable recentering after a short delay
-      setTimeout(() => {
-        shouldRecenter.current = true;
-        setShowRecenterButton(false);
-      }, 3000);
+      // Clear loading state after a short delay
+      setTimeout(() => setIsLoadingRoute(false), 500);
+    } else if (isNavigating) {
+      // If navigating but no route, show loading state
+      setIsLoadingRoute(true);
+    } else {
+      setIsLoadingRoute(false);
     }
   }, [route, mapLoaded, isNavigating, userZoom]);
 
@@ -356,6 +377,50 @@ const MapView: React.FC = () => {
     return el;
   }, []);
 
+  // Function to reload the map
+  const handleReloadMap = useCallback(() => {
+    if (map.current) {
+      console.log("Reloading map...");
+      map.current.remove();
+      map.current = null;
+    }
+    
+    setMapLoaded(false);
+    setMapError(null);
+    userMarker.current = null;
+    collegeMarker.current = null;
+    lastPosition.current = null;
+    
+    if (mapContainer.current) {
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/streets-v11',
+        center: currentLocation 
+          ? [currentLocation.longitude, currentLocation.latitude]
+          : [83.1669508, 17.7097776],
+        zoom: 14,
+        attributionControl: false,
+        preserveDrawingBuffer: true,
+        fadeDuration: 0,
+        renderWorldCopies: false,
+        maxPitch: 60,
+        pitchWithRotate: !isMobileDevice,
+        minZoom: 10,
+        maxZoom: 20,
+      });
+      
+      map.current.once('load', () => {
+        console.log("Map reloaded successfully");
+        setMapLoaded(true);
+      });
+      
+      map.current.on('error', (e) => {
+        console.error('Mapbox error on reload:', e);
+        setMapError('Error reloading map');
+      });
+    }
+  }, [currentLocation, isMobileDevice]);
+
   // Display a loading or error state
   if (mapError) {
     return (
@@ -364,7 +429,7 @@ const MapView: React.FC = () => {
           <p className="text-red-500 mb-2">{mapError}</p>
           <button 
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            onClick={() => window.location.reload()}
+            onClick={handleReloadMap}
           >
             Reload Map
           </button>
@@ -382,6 +447,13 @@ const MapView: React.FC = () => {
             <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
             <p>Loading map...</p>
           </div>
+        </div>
+      )}
+      
+      {isLoadingRoute && mapLoaded && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-white py-1 px-4 rounded-full shadow-md z-10 flex items-center">
+          <RefreshCw className="w-4 h-4 text-blue-500 animate-spin mr-2" />
+          <span className="text-sm">Updating route...</span>
         </div>
       )}
       

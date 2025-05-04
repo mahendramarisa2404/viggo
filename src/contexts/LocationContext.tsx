@@ -1,4 +1,5 @@
-import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+
+import React, { createContext, useState, useEffect, useContext, ReactNode, useRef } from 'react';
 import { Location, GpsAccuracy, SpeedData, CollegeInfo } from '@/types';
 import { getGpsAccuracyLevel, isWithinRadius } from '@/utils/locationUtils';
 import { showProximityNotification, isAlarmManuallyDisabled } from '@/utils/notificationUtils';
@@ -15,9 +16,10 @@ interface LocationContextType {
   hasShownProximityAlert: boolean;
   updateLocation: (location: Location) => void;
   updateCollegeInfo: (info: CollegeInfo) => void;
-  startLocationTracking: () => void;
+  startLocationTracking: () => Promise<boolean>;
   stopLocationTracking: () => void;
   isTracking: boolean;
+  locationError: string | null;
 }
 
 const DEFAULT_COLLEGE_INFO: CollegeInfo = {
@@ -50,7 +52,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   const [speedData, setSpeedData] = useState<SpeedData>({
     speed: 0,
     timestamp: Date.now(),
-    source: 'Advanced', // This is now valid with our updated type
+    source: 'Advanced',
   });
   const [gpsAccuracy, setGpsAccuracy] = useState<GpsAccuracy>({
     level: 'unknown',
@@ -61,13 +63,20 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   const [hasShownProximityAlert, setHasShownProximityAlert] = useState<boolean>(false);
   const [isTracking, setIsTracking] = useState<boolean>(false);
   const [watchId, setWatchId] = useState<number | null>(null);
-  const lastProximityCheckRef = React.useRef<number>(0);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const lastProximityCheckRef = useRef<number>(0);
+  const locationRetryCount = useRef<number>(0);
+  const maxRetries = 3;
 
   const updateLocation = (location: Location) => {
     // Only process valid locations
     if (!location || location.latitude === undefined || location.longitude === undefined) {
       return;
     }
+    
+    // Reset error state when we get valid location
+    setLocationError(null);
+    locationRetryCount.current = 0;
     
     // Store previous location
     if (currentLocation) {
@@ -88,7 +97,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     setSpeedData({
       speed: calculatedSpeed,
       timestamp: location.timestamp || Date.now(),
-      source: 'Advanced', // Now valid with our updated type
+      source: 'Advanced',
     });
     
     // Check if near college with throttling to avoid duplicate notifications
@@ -121,52 +130,119 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     }
   };
 
-  const startLocationTracking = () => {
-    if (!isTracking && navigator.geolocation) {
-      try {
-        if ('Notification' in window && Notification.permission !== 'granted' && 
-            Notification.permission !== 'denied') {
-          Notification.requestPermission();
-        }
-        
-        // Reset speed calculator when starting tracking
-        speedCalculator.reset();
-        
-        const id = navigator.geolocation.watchPosition(
-          (position) => {
-            const newLocation: Location = {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-              accuracy: position.coords.accuracy,
-              timestamp: position.timestamp,
-              speed: position.coords.speed !== null ? position.coords.speed * 3.6 : undefined, // Convert m/s to km/h
-            };
-            updateLocation(newLocation);
-          },
-          (error) => {
-            console.error('Error getting location:', error);
-            toast.error("Location error", {
-              description: `${error.message}. Please check location permissions and try again.`
+  const startLocationTracking = async (): Promise<boolean> => {
+    if (isTracking) return true; // Already tracking
+    
+    try {
+      // Check if geolocation is supported
+      if (!navigator.geolocation) {
+        setLocationError('Geolocation is not supported by your browser');
+        return false;
+      }
+
+      // Request permission first
+      const permissionStatus = await getLocationPermission();
+      if (!permissionStatus) {
+        setLocationError('Location permission denied');
+        return false;
+      }
+      
+      // Reset speed calculator when starting tracking
+      speedCalculator.reset();
+      
+      // Also check for notifications permission
+      if ('Notification' in window && Notification.permission !== 'granted' && 
+          Notification.permission !== 'denied') {
+        Notification.requestPermission();
+      }
+      
+      // Start tracking
+      console.log("Starting location tracking...");
+      const id = navigator.geolocation.watchPosition(
+        (position) => {
+          console.log("Got position:", position.coords);
+          const newLocation: Location = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: position.timestamp,
+            speed: position.coords.speed !== null ? position.coords.speed * 3.6 : undefined, // Convert m/s to km/h
+          };
+          updateLocation(newLocation);
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          setLocationError(`${error.message}. Please check location permissions and try again.`);
+          
+          if (locationRetryCount.current < maxRetries) {
+            locationRetryCount.current += 1;
+            toast.error(`Location error (attempt ${locationRetryCount.current}/${maxRetries})`, {
+              description: `Retrying in 2 seconds...`,
             });
-          },
-          {
-            enableHighAccuracy: true,
-            maximumAge: 100, // Reduced for more frequent updates
-            timeout: 3000,
+            
+            // Retry after a delay
+            setTimeout(() => {
+              if (isTracking) {
+                stopLocationTracking();
+                startLocationTracking();
+              }
+            }, 2000);
+          } else {
+            toast.error("Location tracking failed", {
+              description: "Maximum retry attempts reached. Please check your device settings."
+            });
           }
-        );
-        
-        setWatchId(id);
-        setIsTracking(true);
-        toast.success("Location tracking started", {
-          description: "Your location is now being tracked for navigation"
-        });
-      } catch (error) {
-        console.error("Failed to start location tracking:", error);
-        toast.error("Location tracking failed", {
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 100, // Reduced for more frequent updates
+          timeout: 5000, // Increased timeout for slower connections
+        }
+      );
+      
+      setWatchId(id);
+      setIsTracking(true);
+      toast.success("Location tracking started", {
+        description: "Your location is now being tracked for navigation"
+      });
+      
+      return true;
+    } catch (error) {
+      console.error("Failed to start location tracking:", error);
+      setLocationError("Failed to start location tracking");
+      toast.error("Location tracking failed", {
+        description: "Please enable location permissions in your browser settings"
+      });
+      return false;
+    }
+  };
+
+  // Helper to get location permission
+  const getLocationPermission = async (): Promise<boolean> => {
+    if (!navigator.permissions) {
+      // Older browsers don't support permissions API, just try to get location
+      return true;
+    }
+    
+    try {
+      const result = await navigator.permissions.query({ name: 'geolocation' });
+      if (result.state === 'granted') {
+        return true;
+      } else if (result.state === 'prompt') {
+        // Will prompt the user
+        return true;
+      } else {
+        // Permission denied
+        setLocationError('Location permission denied');
+        toast.error("Location access denied", {
           description: "Please enable location permissions in your browser settings"
         });
+        return false;
       }
+    } catch (err) {
+      console.error("Error checking permissions:", err);
+      // Just try to get the location anyway
+      return true;
     }
   };
 
@@ -193,12 +269,15 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   };
 
   useEffect(() => {
+    // Auto-start location tracking when component mounts
+    startLocationTracking();
+    
     return () => {
       if (watchId !== null && navigator.geolocation) {
         navigator.geolocation.clearWatch(watchId);
       }
     };
-  }, [watchId]);
+  }, []);
 
   return (
     <LocationContext.Provider
@@ -215,6 +294,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
         startLocationTracking,
         stopLocationTracking,
         isTracking,
+        locationError,
       }}
     >
       {children}
