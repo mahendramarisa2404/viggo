@@ -5,11 +5,14 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { useLocation } from '@/contexts/LocationContext';
 import { useNavigation } from '@/contexts/NavigationContext';
 import { createRouteGeoJson } from '@/utils/mapboxUtils';
-import { School, User } from 'lucide-react';
+import { School, User, MapPin, Focus } from 'lucide-react';
 
 // Set a default token, but we will let this be overridable through context
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibWFoaW5kcmF4OTQ0MSIsImEiOiJjbTlteGRuaHcwZzJ4MmpxdXZuaTB4dno5In0.3E8Cne4Zb52xaNyXJlSa4Q';
 mapboxgl.accessToken = MAPBOX_TOKEN;
+
+const RECENTER_TIMEOUT = 30000; // 30 seconds (up from 10 seconds)
+const UPDATE_THRESHOLD_MS = 300; // Minimum time between map position updates
 
 const MapView: React.FC = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -26,20 +29,22 @@ const MapView: React.FC = () => {
   const shouldRecenter = useRef<boolean>(true);
   // Track the current zoom level to prevent zoom thrashing
   const currentZoom = useRef<number>(14);
+  const [userZoom, setUserZoom] = useState<number | null>(null);
   // Track when the user last interacted with the map
   const lastUserInteraction = useRef<number>(0);
   // Debounce timer for map movements
   const mapMoveTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [showRecenterButton, setShowRecenterButton] = useState(false);
 
   const { currentLocation, collegeInfo, isTracking } = useLocation();
   const { route, isNavigating } = useNavigation();
 
+  // Determine if we're on a mobile device
+  const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
   // Optimize map for mobile
   useEffect(() => {
     if (!mapContainer.current) return;
-
-    // Check if we're on a mobile device
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
     try {
       map.current = new mapboxgl.Map({
@@ -52,7 +57,7 @@ const MapView: React.FC = () => {
         fadeDuration: 0, // Disable fade animations to reduce flickering
         renderWorldCopies: false, // Disable world copies to improve performance
         maxPitch: 60, // Limit pitch to improve performance
-        pitchWithRotate: !isMobile, // Disable pitch with rotate on mobile
+        pitchWithRotate: !isMobileDevice, // Disable pitch with rotate on mobile
         minZoom: 10, // Prevent zooming out too far
         maxZoom: 20, // Prevent zooming in too far
       });
@@ -60,7 +65,7 @@ const MapView: React.FC = () => {
       currentZoom.current = 14;
 
       // Optimize for mobile
-      if (isMobile) {
+      if (isMobileDevice) {
         map.current.dragRotate.disable(); // Disable drag rotation on mobile
         map.current.touchZoomRotate.disableRotation(); // Disable rotation on mobile
       }
@@ -68,7 +73,7 @@ const MapView: React.FC = () => {
       // Add minimal controls
       map.current.addControl(
         new mapboxgl.NavigationControl({
-          showCompass: !isMobile,
+          showCompass: !isMobileDevice,
           showZoom: true,
           visualizePitch: false
         }),
@@ -79,6 +84,7 @@ const MapView: React.FC = () => {
       map.current.on('dragstart', () => {
         shouldRecenter.current = false; // User is controlling the map
         lastUserInteraction.current = Date.now();
+        setShowRecenterButton(true);
       });
 
       map.current.on('zoomstart', () => {
@@ -87,16 +93,20 @@ const MapView: React.FC = () => {
 
       map.current.on('zoomend', () => {
         if (map.current) {
-          currentZoom.current = map.current.getZoom();
+          const newZoom = map.current.getZoom();
+          currentZoom.current = newZoom;
+          setUserZoom(newZoom); // Save user's preferred zoom
         }
       });
 
-      // Auto-recenter after 10 seconds of no interaction
+      // Auto-recenter after long period of no interaction (increased to 30 seconds)
       const autoRecenterInterval = setInterval(() => {
-        if (!shouldRecenter.current && Date.now() - lastUserInteraction.current > 10000) {
+        const now = Date.now();
+        if (!shouldRecenter.current && now - lastUserInteraction.current > RECENTER_TIMEOUT) {
           shouldRecenter.current = true;
+          setShowRecenterButton(false);
         }
-      }, 10000);
+      }, 5000); // Check every 5 seconds
 
       // Add error handling
       map.current.on('error', (e) => {
@@ -188,7 +198,7 @@ const MapView: React.FC = () => {
         .addTo(map.current);
 
       // Use popup only on desktop to improve mobile performance
-      if (!/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+      if (!isMobileDevice) {
         new mapboxgl.Popup({ offset: 25, closeButton: false })
           .setLngLat([collegeInfo.location.longitude, collegeInfo.location.latitude])
           .setHTML(`<h3 class="font-bold">Vignan College</h3><p>${collegeInfo.address}</p>`)
@@ -197,30 +207,34 @@ const MapView: React.FC = () => {
     }
   }, [mapLoaded, collegeInfo]);
 
-  // Debounced map move function to prevent thrashing
-  const debouncedMapMove = useCallback((lngLat: [number, number]) => {
-    if (mapMoveTimeout.current) {
-      clearTimeout(mapMoveTimeout.current);
-    }
+  // Fixed map movement function to prevent thrashing
+  const moveMapToPosition = useCallback((lngLat: [number, number]) => {
+    if (!map.current) return;
     
-    mapMoveTimeout.current = setTimeout(() => {
-      if (!map.current) return;
-      
-      // Use jumpTo instead of easeTo for more stability
-      map.current.jumpTo({
-        center: lngLat,
-        zoom: currentZoom.current,
-      });
-    }, 100); // Short timeout for responsiveness but prevents thrashing
-  }, []);
+    // Use jumpTo instead of easeTo for more stability
+    map.current.jumpTo({
+      center: lngLat,
+      // Use user's preferred zoom level or current zoom level
+      zoom: userZoom !== null ? userZoom : currentZoom.current,
+    });
+  }, [userZoom]);
 
-  // Update user marker with improved position smoothing
+  // Handle manual recenter button
+  const handleRecenterClick = useCallback(() => {
+    if (currentLocation) {
+      shouldRecenter.current = true;
+      setShowRecenterButton(false);
+      moveMapToPosition([currentLocation.longitude, currentLocation.latitude]);
+    }
+  }, [currentLocation, moveMapToPosition]);
+
+  // Update user marker with improved position smoothing and reduced update frequency
   useEffect(() => {
     if (!mapLoaded || !map.current || !currentLocation) return;
 
     const now = Date.now();
-    // Enhanced throttling for smoother performance - 300ms minimum between updates
-    if (now - lastUpdate.current < 300) return;
+    // Enhanced throttling - use larger time gaps on mobile
+    if (now - lastUpdate.current < (isMobileDevice ? UPDATE_THRESHOLD_MS : 150)) return;
     lastUpdate.current = now;
 
     const lngLat: [number, number] = [currentLocation.longitude, currentLocation.latitude];
@@ -235,14 +249,14 @@ const MapView: React.FC = () => {
       const distance = Math.sqrt(dx * dx + dy * dy);
       
       // Only update if the distance is significant or it's been a while
-      if (distance < 0.00001 && now - lastUpdate.current < 1000) {
+      if (distance < 0.000005 && now - lastUpdate.current < 1000) {
         return; // Skip tiny movements (noise)
       }
       
       // Apply smoothed position - weight based on accuracy
       const accuracyWeight = currentLocation.accuracy 
-        ? Math.min(1.0, 10 / currentLocation.accuracy)
-        : 0.7;
+        ? Math.min(0.8, 8 / currentLocation.accuracy) // Cap at 0.8 for smoother movement
+        : 0.6;
         
       const smoothedLng = prevLng + (lngLat[0] - prevLng) * accuracyWeight;
       const smoothedLat = prevLat + (lngLat[1] - prevLat) * accuracyWeight;
@@ -267,9 +281,9 @@ const MapView: React.FC = () => {
     }
 
     if (isTracking && shouldRecenter.current) {
-      debouncedMapMove(lngLat);
+      moveMapToPosition(lngLat);
     }
-  }, [currentLocation, mapLoaded, isTracking, debouncedMapMove]);
+  }, [currentLocation, mapLoaded, isTracking, moveMapToPosition]);
 
   // Update route with optimization
   useEffect(() => {
@@ -283,28 +297,30 @@ const MapView: React.FC = () => {
 
     // Only adjust the view when a new route is set or navigation starts
     if (isNavigating && route.geometry.coordinates.length > 0) {
+      // Store the current zoom before fitting bounds
+      const prevZoom = userZoom !== null ? userZoom : currentZoom.current;
+      
       // Fit bounds only on initial route display or route change, not continuously
       const coordinates = route.geometry.coordinates;
       const bounds = coordinates.reduce(
         (bounds, coord) => bounds.extend(coord as [number, number]),
         new mapboxgl.LngLatBounds(coordinates[0] as [number, number], coordinates[0] as [number, number])
       );
-
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       
-      // Use stable zoom and padding to prevent thrashing
+      // Use more stable zoom and padding to prevent thrashing
       map.current.fitBounds(bounds, {
-        padding: 100,
-        maxZoom: 15,
+        padding: {top: 100, bottom: 100, left: 50, right: 50},
+        maxZoom: Math.min(15, prevZoom + 1), // Don't zoom in too much from current level
         duration: 1000,
       });
       
       // After fitting to route, enable recentering after a short delay
       setTimeout(() => {
         shouldRecenter.current = true;
-      }, 2000);
+        setShowRecenterButton(false);
+      }, 3000);
     }
-  }, [route, mapLoaded, isNavigating]);
+  }, [route, mapLoaded, isNavigating, userZoom]);
 
   const createCustomMarker = useCallback((icon: 'school' | 'user') => {
     const el = document.createElement('div');
@@ -367,6 +383,16 @@ const MapView: React.FC = () => {
             <p>Loading map...</p>
           </div>
         </div>
+      )}
+      
+      {showRecenterButton && (
+        <button
+          onClick={handleRecenterClick}
+          className="absolute bottom-6 right-6 bg-white p-3 rounded-full shadow-lg z-10 hover:bg-gray-100"
+          aria-label="Recenter map"
+        >
+          <Focus className="w-5 h-5 text-gray-700" />
+        </button>
       )}
     </>
   );

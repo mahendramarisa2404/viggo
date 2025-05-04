@@ -1,13 +1,17 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from '@/contexts/LocationContext';
 import { GaugeIcon, WifiIcon, WifiOffIcon } from 'lucide-react';
+import { speedCalculator } from '@/utils/speedCalculator';
 
 const SpeedDisplay: React.FC = () => {
   const { speedData, gpsAccuracy } = useLocation();
   const [displaySpeed, setDisplaySpeed] = useState(0);
   const [speedAnimation, setSpeedAnimation] = useState<string>('');
   const [speedTrend, setSpeedTrend] = useState<'rising' | 'falling' | 'stable'>('stable');
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
+  const debugTapCount = useRef(0);
+  const debugTapTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Enhanced smoothing for speed updates with adaptive smoothing factor
   useEffect(() => {
@@ -15,7 +19,7 @@ const SpeedDisplay: React.FC = () => {
     const accuracyFactor = gpsAccuracy.value !== null ? 
       Math.min(1, 10 / (gpsAccuracy.value || 10)) : 0.5;
     
-    const smoothingFactor = 0.2 + (0.3 * accuracyFactor); // 0.2-0.5 range based on accuracy
+    const smoothingFactor = 0.3 + (0.4 * accuracyFactor); // 0.3-0.7 range based on accuracy
     
     // Previous speed value
     const prevSpeed = displaySpeed;
@@ -23,7 +27,7 @@ const SpeedDisplay: React.FC = () => {
     // New smoothed speed value
     setDisplaySpeed(prev => {
       // For very large changes, use direct value to avoid lag in important updates
-      if (Math.abs(prev - speedData.speed) > 10) {
+      if (Math.abs(prev - speedData.speed) > 8) {
         return speedData.speed;
       }
       return prev * (1 - smoothingFactor) + speedData.speed * smoothingFactor;
@@ -84,8 +88,29 @@ const SpeedDisplay: React.FC = () => {
     return null;
   };
 
+  // Enable debug info with 5 quick taps
+  const handleDebugTap = () => {
+    debugTapCount.current += 1;
+    
+    if (debugTapTimer.current) {
+      clearTimeout(debugTapTimer.current);
+    }
+    
+    debugTapTimer.current = setTimeout(() => {
+      if (debugTapCount.current >= 5) {
+        setShowDebugInfo(prev => !prev);
+      }
+      debugTapCount.current = 0;
+    }, 2000);
+  };
+
+  const debugInfo = speedCalculator.getDebugData();
+
   return (
-    <div className="bg-white p-4 rounded-lg shadow-md">
+    <div 
+      className="bg-white p-4 rounded-lg shadow-md" 
+      onClick={handleDebugTap}
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <GaugeIcon className="w-5 h-5 text-gray-600" />
@@ -103,7 +128,9 @@ const SpeedDisplay: React.FC = () => {
       </div>
       
       <div className="text-xs text-gray-500 mt-2 text-center">
-        {speedData.source === 'GPS' ? 'GPS Speed' : 'Calculated Speed'}
+        {speedData.source === 'GPS' ? 'GPS Speed' : 
+         speedData.source === 'Advanced' ? 'Advanced Calculation' : 
+         'Estimated Speed'}
       </div>
       
       <div className="text-xs text-gray-500 mt-1 text-center">
@@ -119,6 +146,18 @@ const SpeedDisplay: React.FC = () => {
           style={{ width: `${Math.min((roundedSpeed / 60) * 100, 100)}%` }}
         />
       </div>
+
+      {showDebugInfo && (
+        <div className="mt-2 text-xs border-t pt-2 text-gray-600">
+          <div>Source: {debugInfo.source || 'Unknown'}</div>
+          {debugInfo.rawGpsSpeed !== undefined && (
+            <div>Raw GPS: {debugInfo.rawGpsSpeed.toFixed(1)} km/h</div>
+          )}
+          {debugInfo.samples !== undefined && (
+            <div>Samples: {debugInfo.samples}, Conf: {(debugInfo.confidence || 0).toFixed(2)}</div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
