@@ -1,4 +1,5 @@
 
+
 // Common types for the application
 
 export interface Location {
@@ -7,6 +8,8 @@ export interface Location {
   accuracy?: number;
   timestamp?: number;
   speed?: number; // Add speed field to the Location interface
+  name?: string;  // Add optional name property
+  address?: string; // Add optional address property
 }
 
 export interface RouteInfo {
@@ -41,3 +44,4 @@ export interface GpsAccuracy {
   level: 'high' | 'medium' | 'low' | 'unknown';
   value: number | null; // in meters
 }
+
