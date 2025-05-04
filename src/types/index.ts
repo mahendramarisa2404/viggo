@@ -6,6 +6,7 @@ export interface Location {
   longitude: number;
   accuracy?: number;
   timestamp?: number;
+  speed?: number; // Add speed field to the Location interface
 }
 
 export interface RouteInfo {
@@ -20,7 +21,7 @@ export interface RouteInfo {
 export interface SpeedData {
   speed: number; // in km/h
   timestamp: number;
-  source: 'GPS' | 'CAN' | 'ESTIMATED';
+  source: 'GPS' | 'CAN' | 'ESTIMATED' | 'Advanced'; // Add 'Advanced' as valid source
 }
 
 export interface EtaInfo {

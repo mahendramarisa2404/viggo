@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { Location, GpsAccuracy, SpeedData, CollegeInfo } from '@/types';
 import { getGpsAccuracyLevel, isWithinRadius } from '@/utils/locationUtils';
@@ -51,7 +50,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   const [speedData, setSpeedData] = useState<SpeedData>({
     speed: 0,
     timestamp: Date.now(),
-    source: 'Advanced',
+    source: 'Advanced', // This is now valid with our updated type
   });
   const [gpsAccuracy, setGpsAccuracy] = useState<GpsAccuracy>({
     level: 'unknown',
@@ -88,8 +87,8 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     // Update speed data
     setSpeedData({
       speed: calculatedSpeed,
-      timestamp: location.timestamp,
-      source: 'Advanced',
+      timestamp: location.timestamp || Date.now(),
+      source: 'Advanced', // Now valid with our updated type
     });
     
     // Check if near college with throttling to avoid duplicate notifications
@@ -140,7 +139,6 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
               longitude: position.coords.longitude,
               accuracy: position.coords.accuracy,
               timestamp: position.timestamp,
-              // Include native speed if available from the GPS
               speed: position.coords.speed !== null ? position.coords.speed * 3.6 : undefined, // Convert m/s to km/h
             };
             updateLocation(newLocation);
